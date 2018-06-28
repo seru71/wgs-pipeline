@@ -1,0 +1,23 @@
+reads
+ |- raw read count and bps 
+ |- trimmed read count and bps 
+ |- FastQC report
+
+alignment
+ |- gene coverge per sample
+    |- mean gene coverage
+    |- mean exon coverage
+    |- gene coverage profile (ExAC like)
+ |- Qualimap report
+ |- mapped, unmapped per sample ? 
+ |- mapping quality metrics ?
+
+variants
+ |- total count
+ |- hetz/homz
+
+
+annotated variants
+ |- rare, coding, rare-coding counts
+ |- filtering stages
+
