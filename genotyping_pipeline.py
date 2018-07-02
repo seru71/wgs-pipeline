@@ -70,7 +70,6 @@ if __name__ == '__main__':
 
 #  Common functions 
 
-
 #88888888888888888888888888888888888888888888888888888888888888888888888888888888888888888
 
 
@@ -221,9 +220,6 @@ def bam_gene_coverage_metrics(input_bam, output):
 
 def qualimap_bam(input_bam, output_dir):
     """ Generates Qualimap bam QC report """
-    # create necessary folders first
-    #if not os.path.exists('qc'): os.mkdir('qc')
-    #if not os.path.exists('qc/qualimap/'): os.mkdir('qc/qualimap')
     if not os.path.exists(output_dir): os.mkdir(output_dir)
     run_cmd(cfg, cfg.qualimap, "bamqc -bam {bam} \
                         -c -outformat PDF \
@@ -237,7 +233,7 @@ def qualimap_bam(input_bam, output_dir):
 
 def get_sample_ids():
     """ Provides meaningful result only after HaplotypeCaller step"""
-    files = glob.glob(os.path.join(runs_scratch_dir,'*','*.gvcf'))
+    files = glob.glob(os.path.join(cfg.runs_scratch_dir,'*','*.gvcf'))
     return [ os.path.splitext(os.path.basename(f))[0] for f in files ]
 
 def get_num_files():
@@ -249,7 +245,6 @@ def get_num_files():
 #88888888888888888888888888888888888888888888888888888888888888888888888888888888888888888
 
 #   Pipeline
-
 
 #88888888888888888888888888888888888888888888888888888888888888888888888888888888888888888
 
@@ -345,12 +340,11 @@ def trim_reads(inputs, output):
     run_cmd(cfg, cfg.trimmomatic, args, interpreter_args="-Xmx"+str(max_mem)+"m", cpus=1, mem_per_cpu=max_mem)
 
 
+###########################
 #
-#
-# Align reads and create raw BAM files (one per sample)
+# Align/map reads and create BAM files (one per sample)
 # 
-
-
+#########################
 
 def bwa_map_and_sort(output_bam, ref_genome, fq1, fq2=None, read_group=None, threads=1):
 	
@@ -424,6 +418,12 @@ def align_reads(fastqs, bam, sample_id, lane_id):
     
     bwa_map_and_sort(bam, cfg.reference, fastqs[0], fastqs[1], read_group=read_group, threads=1)
 
+
+#
+# TODO can we merge in the align reads function?
+#
+
+
 #
 # BAM filenames are expected to have following format:
 #    [SAMPLE_ID]_[LANE_ID].bam
@@ -462,11 +462,15 @@ def index(bam, output):
 
 
 
+############################
 #
+# QC the bam files
 #
-# QC the raw bam files
-#
+#####################
 
+#
+#TODO: requires update. Use different tools?
+#
 
 #@follows(index)
 #@transform(merge_lanes, suffix(".bam"), '.quality_score')
@@ -504,11 +508,15 @@ def raw_bam_qc():
 
 
 
-#
+# ###################
 #
 # Prepare the bam files for variant calling
 #
+#################
 
+#
+# TODO: can we remove dups on the fly, e.g. with sambamba
+#
 
 @follows(index)
 @transform(merge_lanes, suffix(".bam"), '.dedup.bam')
@@ -527,11 +535,11 @@ def remove_dups(bam, output):
     run_cmd(cfg, cfg.picard, args, interpreter_args="-Xmx4g", mem_per_cpu=4096)
 
 
-
+#####################
 #
 # Call variants
 #
-
+################3#
 
 def call_variants_freebayes(bams_list, vcf, ref_genome, targets, bam_list_filename='/tmp/bam_list'):
     
@@ -556,8 +564,9 @@ def jointcall_variants(bams, vcf):
     call_variants_freebayes(bams, vcf, cfg.reference, cfg.capture_plus)
 
 
-
-
+#
+# TODO - how to split variants in elegantly?
+#
 def split_snp_parameters():
     multisample_vcf = os.path.join(cfg.runs_scratch_dir, cfg.run_id+'.multisample.vcf')
     for s_id in get_sample_ids():
@@ -587,6 +596,9 @@ def split_snps(vcf, output, sample):
     run_cmd(cfg, cfg.gatk, args, interpreter_args="-Djava.io.tmpdir=%s -Xmx2g" % tmp_dir, mem_per_cpu=2048)
 
 
+#
+# TODO - update variant stats generation
+#
 @follows(mkdir(os.path.join(cfg.runs_scratch_dir,'qc')))
 @merge(split_snps, os.path.join(cfg.runs_scratch_dir,'qc','variant_qc'))
 def variants_qc(vcf, output):
