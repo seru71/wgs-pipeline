@@ -165,11 +165,11 @@ def produce_fastqc_report(cfg, fastq_file, output_dir=None):
                             
 def index_bam(bam):
     """Use samtools to create an index for the bam file"""
-    run_cmd(cfg.samtools, "index %s" % bam)
+    run_cmd(cfg, cfg.samtools, "index %s" % bam)
                           
 def bam_quality_score_distribution(bam,qs,pdf):
     """Calculates quality score distribution histograms"""
-    run_cmd(cfg.picard, "QualityScoreDistribution \
+    run_cmd(cfg, cfg.picard, "QualityScoreDistribution \
                     CHART_OUTPUT={chart} \
                     OUTPUT={out} \
                     INPUT={bam} \
@@ -179,7 +179,7 @@ def bam_quality_score_distribution(bam,qs,pdf):
 
 def bam_alignment_metrics(bam,metrics):
     """Collects alignment metrics for a bam file"""
-    run_cmd(cfg.picard, "CollectAlignmentSummaryMetrics \
+    run_cmd(cfg, cfg.picard, "CollectAlignmentSummaryMetrics \
                     REFERENCE_SEQUENCE={ref} \
                     OUTPUT={out} \
                     INPUT={bam} \
@@ -189,7 +189,7 @@ def bam_alignment_metrics(bam,metrics):
     
 def bam_target_coverage_metrics(input_bam, output):
     """ Calculates and outputs bam coverage statistics """
-    run_cmd(cfg.gatk, "-R {reference} \
+    run_cmd(cfg, cfg.gatk, "-R {reference} \
                     -T DepthOfCoverage \
                     -o {output} \
                     -I {input} \
@@ -204,7 +204,7 @@ def bam_target_coverage_metrics(input_bam, output):
 
 def bam_gene_coverage_metrics(input_bam, output):
     """ Calculates and outputs bam coverage statistics """
-    run_cmd(cfg.gatk, "-R {reference} \
+    run_cmd(cfg, cfg.gatk, "-R {reference} \
                     -T DepthOfCoverage \
                     -o {output} \
                     -I {input} \
@@ -225,7 +225,7 @@ def qualimap_bam(input_bam, output_dir):
     #if not os.path.exists('qc'): os.mkdir('qc')
     #if not os.path.exists('qc/qualimap/'): os.mkdir('qc/qualimap')
     if not os.path.exists(output_dir): os.mkdir(output_dir)
-    run_cmd(cfg.qualimap, "bamqc -bam {bam} \
+    run_cmd(cfg, cfg.qualimap, "bamqc -bam {bam} \
                         -c -outformat PDF \
                         -gff {target} \
                         -gd HUMAN -os \
@@ -274,7 +274,7 @@ def bcl2fastq_conversion(run_directory, completed_flag):
             ".format(indir=run_directory, outdir=out_dir, interopdir=interop_dir)
     if cfg.run_on_bcl_tile != None:
         args += " --tiles %s" % cfg.run_on_bcl_tile
-    run_cmd(cfg.bcl2fastq, args, cpus=8, mem_per_cpu=2048)
+    run_cmd(cfg, cfg.bcl2fastq, args, cpus=8, mem_per_cpu=2048)
     
 
 
@@ -342,7 +342,7 @@ def trim_reads(inputs, output):
                               unpaired1=unpaired[0], unpaired2=unpaired[1],
                               adapter=cfg.adapters)
     max_mem = 2048
-    run_cmd(cfg.trimmomatic, args, interpreter_args="-Xmx"+str(max_mem)+"m", cpus=1, mem_per_cpu=max_mem)
+    run_cmd(cfg, cfg.trimmomatic, args, interpreter_args="-Xmx"+str(max_mem)+"m", cpus=1, mem_per_cpu=max_mem)
 
 
 #
@@ -363,8 +363,8 @@ def bwa_map_and_sort(output_bam, ref_genome, fq1, fq2=None, read_group=None, thr
 
 	samtools_args = "sort -o {out}".format(out=output_bam)
 
-	run_piped_command(cfg.bwa, bwa_args, None,
-	                  cfg.samtools, samtools_args, None)
+	run_piped_command(cfg, cfg.bwa, bwa_args, None,
+	                       cfg.samtools, samtools_args, None)
 
 
 """
@@ -420,7 +420,7 @@ def align_reads(fastqs, bam, sample_id, lane_id):
     #                 fq1=fastqs[0], fq2=fastqs[1])
     #iargs = "samtools view -b -o {bam} -".format(bam=bam)
 
-    #run_cmd(bwa, args, interpreter_args=iargs, cpus=threads, mem_per_cpu=8192/threads)
+    #run_cmd(cfg, bwa, args, interpreter_args=iargs, cpus=threads, mem_per_cpu=8192/threads)
     
     bwa_map_and_sort(bam, cfg.reference, fastqs[0], fastqs[1], read_group=read_group, threads=1)
 
@@ -443,7 +443,7 @@ def merge_lanes(lane_bams, out_bam):
     for bam in lane_bams:
         args += " I={bam}".format(bam=bam)
         
-    run_cmd(cfg.picard, args, interpreter_args="-Xmx8g", cpus=4, mem_per_cpu=2048)
+    run_cmd(cfg, cfg.picard, args, interpreter_args="-Xmx8g", cpus=4, mem_per_cpu=2048)
     
 
 def clean_fastqs_and_lane_bams():
@@ -524,7 +524,7 @@ def remove_dups(bam, output):
             ".format(tmp=tmp_dir, 
                      bam=bam, 
                      out=output)
-    run_cmd(cfg.picard, args, interpreter_args="-Xmx4g", mem_per_cpu=4096)
+    run_cmd(cfg, cfg.picard, args, interpreter_args="-Xmx4g", mem_per_cpu=4096)
 
 
 
@@ -545,7 +545,7 @@ def call_variants_freebayes(bams_list, vcf, ref_genome, targets, bam_list_filena
     args = args = " -f {ref} -v {vcf} -L {bam_list} -t {target} --report-monomorphic \
         ".format(ref=ref_genome, vcf=vcf, bam_list=bam_list_filename, target=targets)
             
-    run_cmd(cfg.freebayes, args, cpus=threads, mem_per_cpu=int(mem/threads))
+    run_cmd(cfg, cfg.freebayes, args, cpus=threads, mem_per_cpu=int(mem/threads))
     
     os.remove(bam_list_filename)
 
@@ -584,7 +584,7 @@ def split_snps(vcf, output, sample):
                      ad_thr=AD_threshold, 
                      dp_thr=DP_threshold)
             
-    run_cmd(cfg.gatk, args, interpreter_args="-Djava.io.tmpdir=%s -Xmx2g" % tmp_dir, mem_per_cpu=2048)
+    run_cmd(cfg, cfg.gatk, args, interpreter_args="-Djava.io.tmpdir=%s -Xmx2g" % tmp_dir, mem_per_cpu=2048)
 
 
 @follows(mkdir(os.path.join(cfg.runs_scratch_dir,'qc')))
@@ -605,7 +605,7 @@ def variants_qc(vcf, output):
     for vcf in vcfs:
         args += " --eval:{sample} {vcf}" % (os.path.basename(vcf), vcf)
         
-    run_cmd(cfg.gatk, args, interpreter_args="-Djava.io.tmpdir=%s -Xmx2g" % tmp_dir, mem_per_cpu=2048)
+    run_cmd(cfg, cfg.gatk, args, interpreter_args="-Djava.io.tmpdir=%s -Xmx2g" % tmp_dir, mem_per_cpu=2048)
     
 
 def archive_results():
@@ -615,14 +615,14 @@ def archive_results():
     if not os.path.exists(arch_path): 
         os.mkdir(arch_path)
         
-    run_cmd("cp %s/*/*.bam %s" % (cfg.runs_scratch_dir,arch_path), "", run_locally=True)
-    run_cmd("cp %s/*/*.bam.gene_coverage* %s" % (cfg.runs_scratch_dir,arch_path), "", run_locally=True)
-    run_cmd("cp %s/*/*.vcf %s" % (cfg.runs_scratch_dir,arch_path), "", run_locally=True)
-    run_cmd("cp -r %s/qc %s" % (cfg.runs_scratch_dir,arch_path), "", run_locally=True)
+    run_cmd(cfg, "cp %s/*/*.bam %s" % (cfg.runs_scratch_dir,arch_path), "", run_locally=True)
+    run_cmd(cfg, "cp %s/*/*.bam.gene_coverage* %s" % (cfg.runs_scratch_dir,arch_path), "", run_locally=True)
+    run_cmd(cfg, "cp %s/*/*.vcf %s" % (cfg.runs_scratch_dir,arch_path), "", run_locally=True)
+    run_cmd(cfg, "cp -r %s/qc %s" % (cfg.runs_scratch_dir,arch_path), "", run_locally=True)
 
 
 def cleanup_files():
-    run_cmd("rm -rf {dir}/*/*.recal_data.csv {dir}/*/*.realign* {dir}/*/*.dedup* \
+    run_cmd(cfg, "rm -rf {dir}/*/*.recal_data.csv {dir}/*/*.realign* {dir}/*/*.dedup* \
             {dir}/*.multisample.indel.model* {dir}/*.multisample.snp.model* \
             {dir}/*/*.log {dir}/*.multisample.recalibratedSNPS.rawIndels.vcf* \
             {dir}/*.multisample.recalibrated.vcf* \
