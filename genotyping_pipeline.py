@@ -137,7 +137,7 @@ def run_piped_command(cfg, *args):
                   ".format(cpus=cpus, mem=int(1.2*mem_per_cpu), time=walltime)
 	
     full_cmd = expand_piped_command(*args)
-	
+    print full_cmd	
     try:
         stdout, stderr = run_job(full_cmd.strip(), 
                                  job_other_options=job_options,
@@ -265,7 +265,8 @@ def bcl2fastq_conversion(run_directory, completed_flag):
     interop_dir = os.path.join(out_dir,'InterOp')
 
     # r, w, d, and p specify numbers of threads to be used for each of the concurrent subtasks of the conversion (see bcl2fastq manual) 
-    args = "-R {indir} -o {outdir} --interop-dir={interopdir} -r1 -w1 -d2 -p4 \
+    #args = "-R {indir} -o {outdir} --interop-dir={interopdir} -r1 -w1 -d2 -p4 \
+    args = "-R {indir} -o {outdir} --no-lane-splitting \
             ".format(indir=run_directory, outdir=out_dir, interopdir=interop_dir)
     if cfg.run_on_bcl_tile != None:
         args += " --tiles %s" % cfg.run_on_bcl_tile
@@ -300,7 +301,7 @@ def archive_fastqs(completed_flag, archive_dir):
 @jobs_limit(1)    # to avoid problems with simultanous creation of the same sample dir
 @follows(archive_fastqs)
 @subdivide(os.path.join(cfg.runs_scratch_dir,'fastqs','*.fastq.gz'),
-           formatter('(?P<PATH>.+)/(?P<SAMPLE_ID>[^/]+)_S[1-9]\d?_L\d\d\d_R[12]_001\.fastq\.gz$'), 
+           formatter('(?P<PATH>.+)/(?P<SAMPLE_ID>[^/]+)_S[1-9]\d?_R[12]_001\.fastq\.gz$'), 
            '{subpath[0][1]}/{SAMPLE_ID[0]}/{basename[0]}{ext[0]}')
 def link_fastqs(fastq_in, fastq_out):
     """Make working directory for every sample and link fastq files in"""
@@ -320,11 +321,10 @@ def link_fastqs(fastq_in, fastq_out):
 #    [SAMPLE_ID]_[LANE_ID].fq2.gz
 # SAMPLE_ID can contain all signs except path delimiter, i.e. "\"
 #
-@collate(link_fastqs, regex(r'(.+)/([^/]+)_S[1-9]\d?_(L\d\d\d)_R[12]_001\.fastq\.gz$'),  r'\1/\2_\3.fq1.gz')
-def trim_reads(inputs, output):
-    outfq1 = output
-    outfq2 = output.replace('fq1.gz','fq2.gz')
-    unpaired = [outfq1.replace('fq1.gz','fq1_unpaired.gz'), outfq2.replace('fq2.gz','fq2_unpaired.gz')]               
+#@collate(link_fastqs, regex(r'(.+)/([^/]+)_S[1-9]\d?_R[12]_001\.fastq\.gz$'),  r'\1/\2.fq1.gz')
+@collate(link_fastqs, regex(r'(.+)/([^/]+)_S[1-9]\d?_R[12]_001\.fastq\.gz$'),  (r'\1/\2.fq1.gz',r'\1/\2.fq2.gz'))
+def trim_reads(inputs, outputs):
+    unpaired = [outputs[0].replace('fq1.gz','fq1_unpaired.gz'), outputs[1].replace('fq2.gz','fq2_unpaired.gz')]               
     # logfile = output.replace('fq1.gz','trimmomatic.log')
     # -trimlog {log} \
     # log=logfile
@@ -333,7 +333,7 @@ def trim_reads(inputs, output):
             ILLUMINACLIP:{adapter}:2:30:10 \
             SLIDINGWINDOW:4:15 \
             MINLEN:36".format(in1=inputs[0], in2=inputs[1],
-                              out1=outfq1, out2=outfq2,
+                              out1=outputs[0], out2=outputs[1],
                               unpaired1=unpaired[0], unpaired2=unpaired[1],
                               adapter=cfg.adapters)
     max_mem = 2048
@@ -351,7 +351,7 @@ def bwa_map_and_sort(output_bam, ref_genome, fq1, fq2=None, read_group=None, thr
 	bwa_args = "mem -t {threads} {rg} {ref} {fq1} \
 	            ".format(threads=threads, 
                         rg="-R '%s'" % read_group if read_group!=None else "", 
-                        ref=cfg.ref_genome, fq1=fq1)
+                        ref=ref_genome, fq1=fq1)
 	if fq2 != None:
 		bwa_args += fq2
 
@@ -395,19 +395,19 @@ def map_reads(fastq_list, ref_genome, output_bam, read_groups=None):
 #    [SAMPLE_ID]_[LANE_ID].bam
 #
 #@transform(trim_reads, suffix('.fq1.gz'), add_inputs(r'\1.fq2.gz'), '.bam', )
-@transform(trim_reads, formatter("(.+)/(?P<SAMPLE_ID>[^/]+)_(?P<LANE_ID>L\d\d\d).fq[12]\.gz$"), 
-        "{subpath[0][0]}/{SAMPLE_ID[0]}_{LANE_ID[0]}.bam", "{SAMPLE_ID[0]}", "{LANE_ID[0]}")
-def align_reads(fastqs, bam, sample_id, lane_id):
-    threads = 2
-    
-    print sample_id, lane_id
-    
+#@transform(trim_reads, formatter("(.+)/(?P<SAMPLE_ID>[^/]+)_(?P<LANE_ID>L\d\d\d).fq[12]\.gz$"), 
+#        "{subpath[0][0]}/{SAMPLE_ID[0]}_{LANE_ID[0]}.bam", "{SAMPLE_ID[0]}", "{LANE_ID[0]}")
+@jobs_limit(4)
+@transform(trim_reads, formatter("(.+)/(?P<SAMPLE_ID>[^/]+).fq[12]\.gz$"), 
+        "{subpath[0][0]}/{SAMPLE_ID[0]}.bam", "{SAMPLE_ID[0]}")
+def align_reads(fastqs, bam, sample_id):  
     # construct read group information from fastq file name (assuming [SAMPLE_ID]_[LANE_ID].fq[1|2].gz format)
-    sample_lane = os.path.basename(fastqs[0])[0:-len(".fq1.gz")]
-    sample = "_".join(sample_lane.split("_")[0:-1])
-    lane = sample_lane.split("_")[-1]
-    read_group = "@RG\\tID:{id}\\tSM:{sm}\\tLB:{lb}\\tPL:{pl}\\tPU:{pu} \
-                 ".format(id=sample_lane, sm=sample, lb=sample, pl="ILLUMINA", pu=lane)
+    #sample_lane = os.path.basename(fastqs[0])[0:-len(".fq1.gz")]
+    #sample = "_".join(sample_lane.split("_")[0:-1])
+    #lane = sample_lane.split("_")[-1]
+    sample=sample_id
+    read_group = "@RG\\tID:{id}\\tSM:{sm}\\tLB:{lb}\\tPL:{pl}\
+                 ".format(id=sample, sm=sample, lb=sample, pl="ILLUMINA")
                  
     #args = "mem -t {threads} -R {rg} {ref} {fq1} {fq2} \
 	#    ".format(threads=threads, rg=read_group, ref=reference, 
@@ -416,7 +416,7 @@ def align_reads(fastqs, bam, sample_id, lane_id):
 
     #run_cmd(cfg, bwa, args, interpreter_args=iargs, cpus=threads, mem_per_cpu=8192/threads)
     
-    bwa_map_and_sort(bam, cfg.reference, fastqs[0], fastqs[1], read_group=read_group, threads=1)
+    bwa_map_and_sort(bam, cfg.reference, fastqs[0], fastqs[1], read_group=read_group, threads=4)
 
 
 #
@@ -431,6 +431,7 @@ def align_reads(fastqs, bam, sample_id, lane_id):
 #    [SAMPLE_ID].bam
 # SAMPLE_ID can contain all signs except path delimiter, i.e. "\"
 #
+"""
 @jobs_limit(4)    # to avoid filesystem problems 
 @collate(align_reads, regex(r"(.+)/([^/]+).+\.bam$"),  r'\1/\2.bam')
 def merge_lanes(lane_bams, out_bam):
@@ -447,15 +448,15 @@ def merge_lanes(lane_bams, out_bam):
     
 
 def clean_fastqs_and_lane_bams():
-    """ Remove the trimmed fastq files, and SAM files. Links to original fastqs are kept """
+    "" Remove the trimmed fastq files, and SAM files. Links to original fastqs are kept ""
     for f in glob.glob(os.path.join(cfg.runs_scratch_dir,'*','*.fq[12]*.gz')):
         os.remove(f)
     for f in glob.glob(os.path.join(cfg.runs_scratch_dir,'*','*_L\d\d\d.bam')):
         os.remove(f)
+"""
 
-
-@posttask(clean_fastqs_and_lane_bams)
-@transform(merge_lanes, suffix(".bam"), '.bam.bai')
+#@posttask(clean_fastqs_and_lane_bams)
+@transform(align_reads, suffix(".bam"), '.bam.bai')
 def index(bam, output):
     """Create raw bam index"""
     index_bam(bam)
@@ -485,17 +486,17 @@ def index(bam, output):
     #bam_alignment_metrics(input_bam, output)
 
 @follows(index)
-@transform(merge_lanes, suffix(".bam"), '.target_coverage.sample_summary', r'\1.target_coverage')
+@transform(align_reads, suffix(".bam"), '.target_coverage.sample_summary', r'\1.target_coverage')
 def qc_raw_bam_target_coverage_metrics(input_bam, output, output_format):
     bam_target_coverage_metrics(input_bam, output_format)
 
 @follows(index)
-@transform(merge_lanes, suffix('.bam'), '.gene_coverage.sample_summary', r'\1.gene_coverage')
+@transform(align_reads, suffix('.bam'), '.gene_coverage.sample_summary', r'\1.gene_coverage')
 def qc_raw_bam_gene_coverage_metrics(input_bam, output, output_format):
     bam_gene_coverage_metrics(input_bam, output_format)
 
 @follows(index, mkdir(os.path.join(cfg.runs_scratch_dir,'qc')), mkdir(os.path.join(cfg.runs_scratch_dir,'qc','qualimap')))
-@transform(merge_lanes, formatter(".*/(?P<SAMPLE_ID>[^/]+).bam"), '{subpath[0][1]}/qc/qualimap/{SAMPLE_ID[0]}')
+@transform(align_reads, formatter(".*/(?P<SAMPLE_ID>[^/]+).bam"), '{subpath[0][1]}/qc/qualimap/{SAMPLE_ID[0]}')
 def qc_raw_bam_qualimap_report(input_bam, output_dir):
     qualimap_bam(input_bam, output_dir)
 
@@ -519,7 +520,7 @@ def raw_bam_qc():
 #
 
 @follows(index)
-@transform(merge_lanes, suffix(".bam"), '.dedup.bam')
+@transform(align_reads, suffix(".bam"), '.dedup.bam')
 def remove_dups(bam, output):
     """Use Picard to mark duplicates"""
     args = "MarkDuplicates \
@@ -558,7 +559,7 @@ def call_variants_freebayes(bams_list, vcf, ref_genome, targets, bam_list_filena
     os.remove(bam_list_filename)
 
 
-@merge(align_reads, os.path.join(cfg.runs_scratch_dir, "multisample.vcf"))
+@merge(remove_dups, os.path.join(cfg.runs_scratch_dir, "multisample.vcf"))
 def jointcall_variants(bams, vcf):
     """ Call variants using freebayes on trimmed (not merged) reads """
     call_variants_freebayes(bams, vcf, cfg.reference, cfg.capture_plus)
