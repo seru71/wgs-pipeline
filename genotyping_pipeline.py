@@ -518,7 +518,7 @@ def mark_dups(bam, output):
             OUTPUT={out} \
             METRICS_FILE={bam}.dup_metrics \
             VALIDATION_STRINGENCY=LENIENT VERBOSITY=ERROR CREATE_INDEX=true \
-            ".format(tmp=tmp_dir, 
+            ".format(tmp=cfg.tmp_dir, 
                      bam=bam, 
                      out=output)
     run_cmd(cfg, cfg.picard, args, interpreter_args="-Xmx2g", mem_per_cpu=4096)
@@ -582,7 +582,7 @@ def split_snps(vcf, output, sample):
                      ad_thr=AD_threshold, 
                      dp_thr=DP_threshold)
             
-    run_cmd(cfg, cfg.gatk, args, interpreter_args="-Djava.io.tmpdir=%s -Xmx2g" % tmp_dir, mem_per_cpu=2048)
+    run_cmd(cfg, cfg.gatk, args, interpreter_args="-Djava.io.tmpdir=%s -Xmx2g" % cfg.tmp_dir, mem_per_cpu=2048)
 
 
 #
@@ -606,7 +606,7 @@ def variants_qc(vcf, output):
     for vcf in vcfs:
         args += " --eval:{sample} {vcf}" % (os.path.basename(vcf), vcf)
         
-    run_cmd(cfg, cfg.gatk, args, interpreter_args="-Djava.io.tmpdir=%s -Xmx2g" % tmp_dir, mem_per_cpu=2048)
+    run_cmd(cfg, cfg.gatk, args, interpreter_args="-Djava.io.tmpdir=%s -Xmx2g" % cfg.tmp_dir, mem_per_cpu=2048)
     
 
 def archive_results():
@@ -631,7 +631,7 @@ def cleanup_files():
 
 
 @posttask(archive_results, cleanup_files)
-@follows(raw_bam_qc, variants_qc)
+@follows(bam_qc, variants_qc)
 def complete_run():
     pass
 
