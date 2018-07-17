@@ -200,6 +200,7 @@ class PipelineConfig:
         self.fastqc      = None
         self.bwa         = None
         self.samtools    = None
+        self.picard      = None
         self.freebayes   = None
         self.qualimap    = None
 
@@ -320,12 +321,13 @@ class PipelineConfig:
         self.adapters = os.path.join(self.reference_root, config.get('Resources', 'adapters-fasta'))
         
         # tools
-        self.bcl2fastq = config.get('Tools','bcl2fastq')
-        self.trimmomatic = config.get('Tools', 'trimmomatic') 
-        self.bwa = config.get('Tools','bwa')
-        self.samtools = config.get('Tools','samtools')
-        self.freebayes = config.get('Tools','freebayes')
-        self.qualimap = config.get('Tools','qualimap')
+        self.bcl2fastq   = config.get('Tools','bcl2fastq')
+        self.trimmomatic = config.get('Tools','trimmomatic') 
+        self.bwa         = config.get('Tools','bwa')
+        self.samtools    = config.get('Tools','samtools')
+        self.picard      = config.get('Tools','picard')
+        self.freebayes   = config.get('Tools','freebayes')
+        self.qualimap    = config.get('Tools','qualimap')
     
 
         

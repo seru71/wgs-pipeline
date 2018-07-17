@@ -176,60 +176,6 @@ def bam_quality_score_distribution(bam,qs,pdf):
                     ".format(chart=pdf, out=qs, bam=bam),
             interpreter_args="")
 
-def bam_alignment_metrics(bam,metrics):
-    """Collects alignment metrics for a bam file"""
-    run_cmd(cfg, cfg.picard, "CollectAlignmentSummaryMetrics \
-                    REFERENCE_SEQUENCE={ref} \
-                    OUTPUT={out} \
-                    INPUT={bam} \
-                    VALIDATION_STRINGENCY=SILENT \
-                    ".format(ref=cfg.reference, out=metrics, bam=bam),
-            interpreter_args="")
-    
-def bam_target_coverage_metrics(input_bam, output):
-    """ Calculates and outputs bam coverage statistics """
-    run_cmd(cfg, cfg.gatk, "-R {reference} \
-                    -T DepthOfCoverage \
-                    -o {output} \
-                    -I {input} \
-                    -L {capture} \
-                    -ct 8 -ct 20 -ct 30 \
-                    --omitDepthOutputAtEachBase --omitLocusTable \
-                    ".format(reference=cfg.reference,
-                             output=output,
-                             input=input_bam,
-                             capture=cfg.capture), 
-            interpreter_args="-Xmx4g")
-
-def bam_gene_coverage_metrics(input_bam, output):
-    """ Calculates and outputs bam coverage statistics """
-    run_cmd(cfg, cfg.gatk, "-R {reference} \
-                    -T DepthOfCoverage \
-                    -o {output} \
-                    -I {input} \
-                    -L {capture} \
-                    -geneList {genes} \
-                    -ct 5 -ct 10 -ct 20 \
-                    --omitDepthOutputAtEachBase --omitLocusTable \
-                    ".format(reference=cfg.reference,
-                             output=output,
-                             input=input_bam,
-                             capture=cfg.capture,
-                             genes=cfg.gene_coordinates), 
-            interpreter_args="-Xmx4g")
-
-def qualimap_bam(input_bam, output_dir):
-    """ Generates Qualimap bam QC report """
-    if not os.path.exists(output_dir): os.mkdir(output_dir)
-    run_cmd(cfg, cfg.qualimap, "bamqc -bam {bam} \
-                        -c -outformat PDF \
-                        -gff {target} \
-                        -gd HUMAN -os \
-                        -outdir {dir} &> {dir}/qualimap.err \
-                        ".format(bam=input_bam,
-                                target=cfg.capture_qualimap,
-                                dir=output_dir),
-            interpreter_args="")
 
 def get_sample_ids():
     """ Provides meaningful result only after HaplotypeCaller step"""
@@ -479,29 +425,71 @@ def index(bam, output):
     #"""docstring for metrics1"""
     #bam_quality_score_distribution(input_bam, output, output + '.pdf')
 
-#@follows(index)
-#@transform(merge_lanes, suffix(".bam"), '.metrics')
-#def qc_raw_bam_alignment_metrics(input_bam, output):
-    #"""docstring for metrics1"""
-    #bam_alignment_metrics(input_bam, output)
+@follows(index)
+@transform(align_reads, suffix(".bam"), '.bam.alignment_metrics')
+def qc_bam_alignment_metrics(input_bam, output):
+    """Collects alignment metrics for a bam file"""
+    run_cmd(cfg, cfg.picard, "CollectAlignmentSummaryMetrics \
+                    REFERENCE_SEQUENCE={ref} \
+                    OUTPUT={out} \
+                    INPUT={bam} \
+                    VALIDATION_STRINGENCY=SILENT \
+                    ".format(ref=cfg.reference, out=metrics, bam=bam), interpreter_args="-Xmx2g")
 
 @follows(index)
 @transform(align_reads, suffix(".bam"), '.target_coverage.sample_summary', r'\1.target_coverage')
-def qc_raw_bam_target_coverage_metrics(input_bam, output, output_format):
-    bam_target_coverage_metrics(input_bam, output_format)
+def qc_bam_target_coverage_metrics(input_bam, output, output_format):
+    """ Calculate coverage on target """
+    run_cmd(cfg, cfg.gatk, "-R {reference} \
+                    -T DepthOfCoverage \
+                    -o {output} \
+                    -I {input} \
+                    -L {capture} \
+                    -ct 8 -ct 20 -ct 30 \
+                    --omitDepthOutputAtEachBase --omitLocusTable \
+                    ".format(reference=cfg.reference,
+                             output=output_format,
+                             input=input_bam,
+                             capture=cfg.capture),
+            interpreter_args="-Xmx4g")
 
 @follows(index)
 @transform(align_reads, suffix('.bam'), '.gene_coverage.sample_summary', r'\1.gene_coverage')
-def qc_raw_bam_gene_coverage_metrics(input_bam, output, output_format):
-    bam_gene_coverage_metrics(input_bam, output_format)
+def qc_bam_gene_coverage_metrics(input_bam, output, output_format):
+    """Calculates and outputs bam coverage statistics """
+    run_cmd(cfg, cfg.gatk, "-R {reference} \
+                    -T DepthOfCoverage \
+                    -o {output} \
+                    -I {input} \
+                    -L {capture} \
+                    -geneList {genes} \
+                    -ct 5 -ct 10 -ct 20 \
+                    --omitDepthOutputAtEachBase --omitLocusTable \
+                    ".format(reference=cfg.reference,
+                             output=output_format,
+                             input=input_bam,
+                             capture=cfg.capture,
+                             genes=cfg.gene_coordinates),
+            interpreter_args="-Xmx4g")
 
-@follows(index, mkdir(os.path.join(cfg.runs_scratch_dir,'qc')), mkdir(os.path.join(cfg.runs_scratch_dir,'qc','qualimap')))
+
 @transform(align_reads, formatter(".*/(?P<SAMPLE_ID>[^/]+).bam"), '{subpath[0][1]}/qc/qualimap/{SAMPLE_ID[0]}')
-def qc_raw_bam_qualimap_report(input_bam, output_dir):
-    qualimap_bam(input_bam, output_dir)
+def qc_bam_qualimap_report(input_bam, output_dir):
+    """ Generates Qualimap bam QC report """
+    if not os.path.exists(output_dir): os.mkdir(output_dir)
+    run_cmd(cfg, cfg.qualimap, "bamqc -bam {bam} \
+                        -c -outformat PDF \
+                        -gff {target} \
+                        -gd HUMAN -os \
+                        -outdir {dir} &> {dir}/qualimap.err \
+                        ".format(bam=input_bam,
+                                target=cfg.capture_qualimap,
+                                dir=output_dir),
+            interpreter_args="")
 
-@follows(qc_raw_bam_target_coverage_metrics, qc_raw_bam_qualimap_report)
-def raw_bam_qc():
+
+@follows(qc_bam_alignment_metrics, qc_bam_target_coverage_metrics, qc_bam_qualimap_report)
+def bam_qc():
     """ Aggregates raw bam quality control steps """
     pass
 
@@ -516,12 +504,12 @@ def raw_bam_qc():
 #################
 
 #
-# TODO: can we remove dups on the fly, e.g. with sambamba
+# TODO: can we mark/remove dups on the fly, e.g. with sambamba. Samtools requires fixmate which requires name-sorted order
 #
 
 @follows(index)
 @transform(align_reads, suffix(".bam"), '.dedup.bam')
-def remove_dups(bam, output):
+def mark_dups(bam, output):
     """Use Picard to mark duplicates"""
     args = "MarkDuplicates \
             TMP_DIR={tmp} \
@@ -533,7 +521,7 @@ def remove_dups(bam, output):
             ".format(tmp=tmp_dir, 
                      bam=bam, 
                      out=output)
-    run_cmd(cfg, cfg.picard, args, interpreter_args="-Xmx4g", mem_per_cpu=4096)
+    run_cmd(cfg, cfg.picard, args, interpreter_args="-Xmx2g", mem_per_cpu=4096)
 
 
 #####################
@@ -559,7 +547,7 @@ def call_variants_freebayes(bams_list, vcf, ref_genome, targets, bam_list_filena
     os.remove(bam_list_filename)
 
 
-@merge(remove_dups, os.path.join(cfg.runs_scratch_dir, "multisample.vcf"))
+@merge(mark_dups, os.path.join(cfg.runs_scratch_dir, "multisample.vcf"))
 def jointcall_variants(bams, vcf):
     """ Call variants using freebayes on trimmed (not merged) reads """
     call_variants_freebayes(bams, vcf, cfg.reference, cfg.capture_plus)
