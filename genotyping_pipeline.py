@@ -436,7 +436,8 @@ def qc_bam_alignment_metrics(input_bam, output):
                     VALIDATION_STRINGENCY=SILENT \
                     ".format(ref=cfg.reference, out=metrics, bam=bam), interpreter_args="-Xmx2g")
                     
-                    
+
+@follows(mkdir(os.path.join(cfg.runs_scratch_dir,'qc')))                    
 @merge(qc_bam_alignment_metrics,os.path.join(cfg.runs_scratch_dir, 'qc', 'all_samples.alignment_metrics'))
 def qc_aggregate_alignment_metrics(inputs,output):
 	import tsv
@@ -447,24 +448,22 @@ def qc_aggregate_alignment_metrics(inputs,output):
 
 	for name_file in inputs:
 		a = name_file.split('/')
-		list_of_names.append(a[-1][:-(len('.bam_alignment_metrics'])
+		list_of_names.append(a[-1][:-len('.bam_alignment_metrics')])
 
-	for name in files:
+	for name in inputs:
 		with open(name, 'r') as f:
 			for line in f:
 				line = line.strip('\n')
-				start = line.startswith('PAIR')
-				if start == True:
-					splited = line.split(' ')
+				if line.startswith('PAIR'):
+					splited = line.split('\t')
 					pairs.append(splited)
                 
-	for lists in pairs:        
+	for lists in pairs:       
 		lists = list(filter(None, lists))
 		lists.remove("PAIR")
 		lists_ele.append(lists)
 
 	for part in lists_ele:
-
 		part.insert(0,list_of_names[0])
 		list_of_names.remove(list_of_names[0])
 
