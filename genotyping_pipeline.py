@@ -492,14 +492,14 @@ def qc_bam_target_coverage_metrics(input_bam, output, output_format):
             interpreter_args="-Xmx4g")
 
 @follows(index)
-@transform(align_reads, suffix('.bam'), '.gene_coverage.sample_summary', r'\1.gene_coverage')
-@merge(align_reads, os.path.join(cfg.runs_scratch_dir, 'all_samples.coverage'))
+#@transform(align_reads, suffix('.bam'), '.gene_coverage.sample_summary', r'\1.gene_coverage')
+@merge(align_reads, os.path.join(cfg.runs_scratch_dir, 'qc', 'all_samples.coverage'))
 def qc_bam_gene_coverage_metrics(input_bams, output):
     """Calculates and outputs bam coverage statistics """
     bam_list_file = os.path.join(cfg.tmp_dir, 'file_with_bam_lists.list')
-    with open(bam_list_file,'r+') as f:
+    with open(bam_list_file,'w') as f:
         for bam_path in input_bams:
-            f.write(bam_path)
+            f.write(bam_path+'\n')
         
     run_cmd(cfg, cfg.gatk, "-R {reference} \
                     -T DepthOfCoverage \
@@ -507,7 +507,7 @@ def qc_bam_gene_coverage_metrics(input_bams, output):
                     -I {inputs} \
                     -L {capture} \
                     -geneList {genes} \
-                    -ct 5 -ct 10 -ct 20 \
+                    -ct 10 -ct 20 \
                     --omitDepthOutputAtEachBase --omitLocusTable \
                     ".format(reference=cfg.reference,
                              output=output,
