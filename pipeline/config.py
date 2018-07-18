@@ -201,6 +201,7 @@ class PipelineConfig:
         self.bwa         = None
         self.samtools    = None
         self.picard      = None
+        self.gatk        = None
         self.freebayes   = None
         self.qualimap    = None
 
@@ -326,6 +327,7 @@ class PipelineConfig:
         self.bwa         = config.get('Tools','bwa')
         self.samtools    = config.get('Tools','samtools')
         self.picard      = config.get('Tools','picard')
+        self.gatk        = config.get('Tools','gatk')
         self.freebayes   = config.get('Tools','freebayes')
         self.qualimap    = config.get('Tools','qualimap')
     
