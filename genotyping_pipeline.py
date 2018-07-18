@@ -494,23 +494,30 @@ def qc_bam_target_coverage_metrics(input_bam, output, output_format):
 
 @follows(index)
 @transform(align_reads, suffix('.bam'), '.gene_coverage.sample_summary', r'\1.gene_coverage')
-def qc_bam_gene_coverage_metrics(input_bam, output, output_format):
+@merge(align_reads, os.path.join(cfg.runs_scratch_dir, 'all_samples.coverage'))
+def qc_bam_gene_coverage_metrics(input_bams, output):
     """Calculates and outputs bam coverage statistics """
+    bam_list_file = os.path.join(cfg.tmp_dir, 'file_with_bam_lists.list')
+    with open(bam_list_file,'r+') as f:
+        for bam_path in input_bams:
+            f.write(bam_path)
+        
     run_cmd(cfg, cfg.gatk, "-R {reference} \
                     -T DepthOfCoverage \
                     -o {output} \
-                    -I {input} \
+                    -I {inputs} \
                     -L {capture} \
                     -geneList {genes} \
                     -ct 5 -ct 10 -ct 20 \
                     --omitDepthOutputAtEachBase --omitLocusTable \
                     ".format(reference=cfg.reference,
-                             output=output_format,
-                             input=input_bam,
+                             output=output,
+                             inputs=bam_list_file,
                              capture=cfg.capture,
                              genes=cfg.gene_coordinates),
             interpreter_args="-Xmx4g")
-
+            
+           #os.remove(bam_list_file)
 
 @transform(align_reads, formatter(".*/(?P<SAMPLE_ID>[^/]+).bam"), '{subpath[0][1]}/qc/qualimap/{SAMPLE_ID[0]}')
 def qc_bam_qualimap_report(input_bam, output_dir):
