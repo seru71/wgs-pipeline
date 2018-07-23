@@ -238,7 +238,11 @@ class PipelineConfig:
             
         else:
             raise Exception("Incorrect runfolder\'s path [%s] or missing SampleSheet file." % runfolder)
-   
+
+    def set_num_jobs(self,jobs):
+        if jobs is not None:
+            self.num_jobs = jobs
+
 
     def set_input_fastqs(self, fastqs):
         self.input_fastqs = fastqs

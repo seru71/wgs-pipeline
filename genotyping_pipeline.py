@@ -56,6 +56,7 @@ if __name__ == '__main__':
     cfg = pipeline.config.PipelineConfig() 
     cfg.set_logger(logger)
     cfg.set_runfolder(options.run_folder)
+    cfg.set_num_jobs(options.jobs)
     cfg.load_settings_from_file(options.pipeline_settings if options.pipeline_settings != None 
                                                         else os.path.join(options.run_folder, 'settings.cfg') )
 
@@ -578,9 +579,20 @@ def call_variants_freebayes(bams_list, vcf, ref_genome, targets, bam_list_filena
         for bam in bams_list:
             f.write(bam + '\n')
     
-    args = args = " -f {ref} -v {vcf} -L {bam_list} -t {target} --report-monomorphic \
-        ".format(ref=ref_genome, vcf=vcf, bam_list=bam_list_filename, target=targets)
-            
+#    args = args = " -f {ref} -v {vcf} -L {bam_list} -t {target} --report-monomorphic \
+#        ".format(ref=ref_genome, vcf=vcf, bam_list=bam_list_filename, target=targets)
+ 
+    args = args = " -f {ref} -v {vcf} -L {bam_list} -t {target} \
+                  --min-coverage {min_dp} --min-alternate-count {min_alt_dp} \
+                  --min-mapping-quality {mq} --report-monomorphic \
+                  ".format(ref=ref_genome, 
+                           vcf=vcf, 
+                           bam_list=bam_list_filename, 
+                           target=cfg.capture_plus,
+                           min_dp     = 20,
+                           min_alt_dp = 4,
+                           mq         = 30)           
+
     run_cmd(cfg, cfg.freebayes, args, cpus=threads, mem_per_cpu=int(mem/threads))
     
     os.remove(bam_list_filename)
