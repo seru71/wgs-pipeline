@@ -441,40 +441,32 @@ def qc_bam_alignment_metrics(input_bam, output):
 @follows(mkdir(os.path.join(cfg.runs_scratch_dir,'qc')))                    
 @merge(qc_bam_alignment_metrics,os.path.join(cfg.runs_scratch_dir, 'qc', 'all_samples.alignment_metrics'))
 def qc_aggregate_alignment_metrics(inputs,output):
-	import tsv
+        import tsv
+        import os
+        list_of_names = []
+        categories = ''
+        num = 0
 
-	pairs = []
-	lists_ele = []
-	list_of_names = []
+        writer = tsv.TsvWriter(open(output, "w"))
 
-	for name_file in inputs:
-		a = name_file.split('/')
-		list_of_names.append(a[-1][:-len('.bam_alignment_metrics')])
+        for name in inputs:
+                base = os.path.basename(name)
+                list_of_names.append(base[:-len('.bam_alignment_metrics')])
+                with open(name, 'r') as f:
+                        for line in f:
+                                line = line.strip('\n')
+                                if categories == '' and line.startswith('CATEGORY'):
+                                        categories = line.split('\t')
+                                        writer.list_line(categories)
 
-	for name in inputs:
-		with open(name, 'r') as f:
-			for line in f:
-				line = line.strip('\n')
-				if line.startswith('PAIR'):
-					splited = line.split('\t')
-					pairs.append(splited)
-                
-	for lists in pairs:       
-		lists = list(filter(None, lists))
-		lists.remove("PAIR")
-		lists_ele.append(lists)
+                                elif line.startswith('PAIR'):
+                                        splited = line.split('\t')
+                                        splited.remove('PAIR')
+                                        splited.insert(0,list_of_names[num])
+                                        num += 1
+                                        writer.list_line(splited)
+        writer.close()
 
-	for part in lists_ele:
-		part.insert(0,list_of_names[0])
-		list_of_names.remove(list_of_names[0])
-
-	writer = tsv.TsvWriter(open(output, "w"))
-	for ele in lists_ele:
-		writer.list_line(ele)
-	writer.close()
-    
-    
-    
 @follows(index)
 @transform(align_reads, suffix(".bam"), '.target_coverage.sample_summary', r'\1.target_coverage')
 def qc_bam_target_coverage_metrics(input_bam, output, output_format):
