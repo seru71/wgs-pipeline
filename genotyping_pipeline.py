@@ -441,34 +441,7 @@ def qc_bam_alignment_metrics(input_bam, output):
 @follows(mkdir(os.path.join(cfg.runs_scratch_dir,'qc')))                    
 @merge(qc_bam_alignment_metrics,os.path.join(cfg.runs_scratch_dir, 'qc', 'all_samples.alignment_metrics'))
 def qc_aggregate_alignment_metrics(inputs,output):
-<<<<<<< HEAD
-        import tsv
-        import os
-        list_of_names = []
-        categories = ''
-        num = 0
 
-        writer = tsv.TsvWriter(open(output, "w"))
-
-        for name in inputs:
-                base = os.path.basename(name)
-                list_of_names.append(base[:-len('.bam_alignment_metrics')])
-                with open(name, 'r') as f:
-                        for line in f:
-                                line = line.strip('\n')
-                                if categories == '' and line.startswith('CATEGORY'):
-                                        categories = line.split('\t')
-                                        writer.list_line(categories)
-
-                                elif line.startswith('PAIR'):
-                                        splited = line.split('\t')
-                                        splited.remove('PAIR')
-                                        splited.insert(0,list_of_names[num])
-                                        num += 1
-                                        writer.list_line(splited)
-        writer.close()
-
-=======
 	import tsv
 	import os
 	list_of_names = []
@@ -497,7 +470,6 @@ def qc_aggregate_alignment_metrics(inputs,output):
     
     
     
->>>>>>> 389a83f4e7aefaf65be7bd60ff8b19acce8ad43c
 @follows(index)
 @transform(align_reads, suffix(".bam"), '.target_coverage.sample_summary', r'\1.target_coverage')
 def qc_bam_target_coverage_metrics(input_bam, output, output_format):
