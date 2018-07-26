@@ -458,6 +458,7 @@ def qc_aggregate_alignment_metrics(inputs,output):
 				line = line.strip('\n')
 				if categories == '' and line.startswith('CATEGORY'):
 					categories = line.split('\t')
+                                        categories[0]='SAMPLE'
 					writer.list_line(categories)
 				
 				elif line.startswith('PAIR'):
