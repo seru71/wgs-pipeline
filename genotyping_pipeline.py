@@ -97,7 +97,7 @@ def run_cmd(cfg, cmd, args, interpreter_args=None, run_locally=True,
     if job_script_dir is None:
         job_script_dir = os.path.join(cfg.runs_scratch_dir, "drmaa")
 
-    full_cmd = cmd.format(args=args, 
+    full_cmd = "nice "+cmd.format(args=args, 
                           interpreter_args = interpreter_args if interpreter_args!=None else "")
 
     stdout, stderr = "", ""
@@ -137,7 +137,7 @@ def run_piped_command(cfg, *args):
                    --time={time} \
                   ".format(cpus=cpus, mem=int(1.2*mem_per_cpu), time=walltime)
 	
-    full_cmd = expand_piped_command(*args)
+    full_cmd = "nice " + expand_piped_command(*args)
     print full_cmd	
     try:
         stdout, stderr = run_job(full_cmd.strip(), 
