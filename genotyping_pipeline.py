@@ -600,10 +600,53 @@ def call_variants_freebayes(bams_list, vcf, ref_genome, targets, bam_list_filena
     os.remove(bam_list_filename)
 
 
-@merge(mark_dups, os.path.join(cfg.runs_scratch_dir, "multisample.vcf"))
+@merge(mark_dups, os.path.join(cfg.runs_scratch_dir, "multisample.fb.vcf"))
 def jointcall_variants(bams, vcf):
     """ Call variants using freebayes on trimmed (not merged) reads """
     call_variants_freebayes(bams, vcf, cfg.reference, cfg.capture_plus)
+
+
+
+#
+# TODO:
+# pcr_indel_model based on settings
+#
+@jobs_limit(16)
+@transform(mark_dups, suffix('.bam'), '.gvcf')
+def call_haplotypes(bam, output_gvcf):
+    """Perform variant calling using GATK HaplotypeCaller"""
+    cmd = "-T HaplotypeCaller \
+            -R {ref} \
+            -I {bam} \
+            -o {gvcf} \
+            --emitRefConfidence GVCF \
+            -L {target} \
+            -pcr_indel_model {pcr} \
+            ".format(ref=cfg.reference, 
+                     bam=bam, 
+                     gvcf=output_gvcf, 
+                     target=cfg.capture_plus,
+                     pcr='NONE')
+
+    run_cmd(cfg, cfg.gatk, args, '-Djava.io.tmpdir=%s -Xmx4g' % cfg.tmp_dir)
+
+
+@merge(call_haplotypes, os.path.join(cfg.runs_scratch_dir, 'multisample.gatk.vcf'))
+def genotype_gvcfs(gvcfs, output):
+    """Combine the per-sample GVCF files and genotype""" 
+    args = "-T GenotypeGVCFs \
+            -R {ref} \
+            -o {out} \
+            -dcov 3000 \
+            -nt {threads}" % (ref=cfg.reference, out=output, threads=cfg.num_jobs)
+       
+    for gvcf in gvcfs:
+        args += " --variant %s" % gvcf
+    
+    run_cmd(cfg, cfg.gatk, args, '-Xmx16g')
+
+
+
 
 
 #
