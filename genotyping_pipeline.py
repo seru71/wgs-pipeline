@@ -472,6 +472,98 @@ def qc_bam_gene_coverage_metrics(input_bam, output, output_format):
                              genes=cfg.gene_coordinates),
             interpreter_args="-Xmx4g")
 
+#########################################################################################
+
+def gene_coverage_sample_summary(input_dir,output_dir):
+    import os,tsv
+    output_dir = '/pawels/scratch/dawid_test/all_sample.sample_coverage_summary.tsv'
+    input_dir = '/pawels/scratch/dawid_test/sample_summary'
+
+
+
+
+    writer = tsv.TsvWriter(open(output_dir, "w"))
+    
+    num = 0
+    for filename in os.listdir(input_dir):
+        if len(filename) == 4:
+            new_input_dir = os.path.join(input_dir, filename)
+            for files in os.listdir(new_input_dir):
+                os.chdir(new_input_dir)
+                with open(files,'r') as f:
+                    for line in f:
+                        
+                        line = line.strip('\n')
+                        splited = line.split(' ')
+                        splited = filter(None, splited)
+                        
+                        if line.startswith('sample_id') and num == 0:
+                            writer.list_line(splited)
+                            num +=1
+                            
+                        elif line.startswith(filename):
+                            print splited
+                            writer.list_line(splited)
+
+    writer.close()
+   
+    
+
+
+def gene_coverage_sample_gene_summary(input_dir,output_dir): 
+
+    import pandas as pd
+    import os, tsv, shutil
+
+    if not os.path.exists('/pawels/scratch/dawid_test/temporary'):
+        os.makedirs('/pawels/scratch/dawid_test/temporary')
+
+    input_dir = '/pawels/scratch/dawid_test/'
+
+    cutted_list = []
+    num = 0
+    temp_files = []
+
+    for filename in os.listdir(input_dir):
+        if len(filename) == 4:
+            new_input_dir = os.path.join(input_dir, filename)
+            for files in os.listdir(new_input_dir):
+                os.chdir(new_input_dir)
+                if files == filename + '.gene_coverage.sample_gene_summary':
+                    with open(files,'r') as f:
+                        writer = tsv.TsvWriter(open(('/pawels/scratch/dawid_test/temporary' + filename) + '.tsv', "w"))
+                        for line in f:
+                            line = line.strip('\n')
+                            splited = line.split(' ')
+                            splited = filter(None, splited)
+                            if num == 0:
+                                cutted_list.extend([splited[0]]) #tworzenie indexu nazw
+                                index_file_name = filename
+                            cutted_list.extend([splited[2],splited[9],splited[10]])
+                            writer.list_line(cutted_list)
+                            cutted_list = cutted_list[5:]
+                            num +=1  
+    writer.close()
+
+    for filename in os.listdir('/pawels/scratch/dawid_test/temporary'):
+        temp_files.append(filename)
+   
+    dir = path.dirname(__file__);
+    first = pd.read_csv(path.join(dir, 'tempo/'+ index_file_name +'.tsv'))  #laczenie tsv wertykalnie uzywajac pandas
+    temp_files.remove(index_file_name + '.tsv')
+    for var in range(0,len(temp_files)):
+        second = pd.read_csv(path.join(dir, 'tempo/'+ temp_files[var]))
+        result = pd.concat([first, second], axis=1) #łaczenie plikow
+        first = result
+
+    result.to_csv(path_or_buf = '/pawels/scratch/dawid_test/all_sample.gene_coverage_summary.tsv')
+    if os.path.exists('/pawels/scratch/dawid_test/temporary'):
+        shutil.rmtree('/pawels/scratch/dawid_test/temporary')   #usuwanie tymczasowego katalogu i jego zawartosci
+
+
+########################################################################################
+
+
 
 @transform(align_reads, formatter(".*/(?P<SAMPLE_ID>[^/]+).bam"), '{subpath[0][1]}/qc/qualimap/{SAMPLE_ID[0]}')
 def qc_bam_qualimap_report(input_bam, output_dir):
