@@ -201,6 +201,7 @@ class PipelineConfig:
         self.bwa         = None
         self.samtools    = None
         self.picard      = None
+        self.gatk        = None
         self.freebayes   = None
         self.qualimap    = None
 
@@ -237,7 +238,11 @@ class PipelineConfig:
             
         else:
             raise Exception("Incorrect runfolder\'s path [%s] or missing SampleSheet file." % runfolder)
-   
+
+    def set_num_jobs(self,jobs):
+        if jobs is not None:
+            self.num_jobs = jobs
+
 
     def set_input_fastqs(self, fastqs):
         self.input_fastqs = fastqs
@@ -326,6 +331,7 @@ class PipelineConfig:
         self.bwa         = config.get('Tools','bwa')
         self.samtools    = config.get('Tools','samtools')
         self.picard      = config.get('Tools','picard')
+        self.gatk        = config.get('Tools','gatk')
         self.freebayes   = config.get('Tools','freebayes')
         self.qualimap    = config.get('Tools','qualimap')
     

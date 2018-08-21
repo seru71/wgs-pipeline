@@ -56,6 +56,7 @@ if __name__ == '__main__':
     cfg = pipeline.config.PipelineConfig() 
     cfg.set_logger(logger)
     cfg.set_runfolder(options.run_folder)
+    cfg.set_num_jobs(options.jobs)
     cfg.load_settings_from_file(options.pipeline_settings if options.pipeline_settings != None 
                                                         else os.path.join(options.run_folder, 'settings.cfg') )
 
@@ -96,7 +97,7 @@ def run_cmd(cfg, cmd, args, interpreter_args=None, run_locally=True,
     if job_script_dir is None:
         job_script_dir = os.path.join(cfg.runs_scratch_dir, "drmaa")
 
-    full_cmd = cmd.format(args=args, 
+    full_cmd = "nice "+cmd.format(args=args, 
                           interpreter_args = interpreter_args if interpreter_args!=None else "")
 
     stdout, stderr = "", ""
@@ -136,7 +137,7 @@ def run_piped_command(cfg, *args):
                    --time={time} \
                   ".format(cpus=cpus, mem=int(1.2*mem_per_cpu), time=walltime)
 	
-    full_cmd = expand_piped_command(*args)
+    full_cmd = "nice " + expand_piped_command(*args)
     print full_cmd	
     try:
         stdout, stderr = run_job(full_cmd.strip(), 
@@ -435,7 +436,41 @@ def qc_bam_alignment_metrics(input_bam, output):
                     INPUT={bam} \
                     VALIDATION_STRINGENCY=SILENT \
                     ".format(ref=cfg.reference, out=metrics, bam=bam), interpreter_args="-Xmx2g")
+                    
 
+@follows(mkdir(os.path.join(cfg.runs_scratch_dir,'qc')))                    
+@merge(qc_bam_alignment_metrics,os.path.join(cfg.runs_scratch_dir, 'qc', 'all_samples.alignment_metrics'))
+def qc_aggregate_alignment_metrics(inputs,output):
+
+	import tsv
+	import os
+	list_of_names = []
+	categories = ''
+	num = 0
+
+	writer = tsv.TsvWriter(open(output, "w"))
+
+	for name in inputs:
+		base = os.path.basename(name)
+		list_of_names.append(base[:-len('.bam_alignment_metrics')])
+		with open(name, 'r') as f:
+			for line in f:
+				line = line.strip('\n')
+				if categories == '' and line.startswith('CATEGORY'):
+					categories = line.split('\t')
+                                        categories[0]='SAMPLE'
+					writer.list_line(categories)
+				
+				elif line.startswith('PAIR'):
+					splited = line.split('\t')
+					splited.remove('PAIR')
+					splited.insert(0,list_of_names[num])
+					num += 1
+					writer.list_line(splited)
+	writer.close()
+    
+    
+    
 @follows(index)
 @transform(align_reads, suffix(".bam"), '.target_coverage.sample_summary', r'\1.target_coverage')
 def qc_bam_target_coverage_metrics(input_bam, output, output_format):
@@ -454,23 +489,30 @@ def qc_bam_target_coverage_metrics(input_bam, output, output_format):
             interpreter_args="-Xmx4g")
 
 @follows(index)
-@transform(align_reads, suffix('.bam'), '.gene_coverage.sample_summary', r'\1.gene_coverage')
-def qc_bam_gene_coverage_metrics(input_bam, output, output_format):
+#@transform(align_reads, suffix('.bam'), '.gene_coverage.sample_summary', r'\1.gene_coverage')
+@merge(align_reads, os.path.join(cfg.runs_scratch_dir, 'qc', 'all_samples.coverage'))
+def qc_bam_gene_coverage_metrics(input_bams, output):
     """Calculates and outputs bam coverage statistics """
+    bam_list_file = os.path.join(cfg.tmp_dir, 'file_with_bam_lists.list')
+    with open(bam_list_file,'w') as f:
+        for bam_path in input_bams:
+            f.write(bam_path+'\n')
+        
     run_cmd(cfg, cfg.gatk, "-R {reference} \
                     -T DepthOfCoverage \
                     -o {output} \
-                    -I {input} \
+                    -I {inputs} \
                     -L {capture} \
                     -geneList {genes} \
-                    -ct 5 -ct 10 -ct 20 \
+                    -ct 10 -ct 20 \
                     --omitDepthOutputAtEachBase --omitLocusTable \
                     ".format(reference=cfg.reference,
-                             output=output_format,
-                             input=input_bam,
+                             output=output,
+                             inputs=bam_list_file,
                              capture=cfg.capture,
                              genes=cfg.gene_coordinates),
             interpreter_args="-Xmx4g")
+<<<<<<< HEAD
 
 #########################################################################################
 
@@ -564,6 +606,10 @@ def gene_coverage_sample_gene_summary(input_dir,output_dir):
 ########################################################################################
 
 
+=======
+            
+           #os.remove(bam_list_file)
+>>>>>>> e1ffbfcda9672c0275c505d9ea39cc14f7df894f
 
 @transform(align_reads, formatter(".*/(?P<SAMPLE_ID>[^/]+).bam"), '{subpath[0][1]}/qc/qualimap/{SAMPLE_ID[0]}')
 def qc_bam_qualimap_report(input_bam, output_dir):
@@ -631,18 +677,72 @@ def call_variants_freebayes(bams_list, vcf, ref_genome, targets, bam_list_filena
         for bam in bams_list:
             f.write(bam + '\n')
     
-    args = args = " -f {ref} -v {vcf} -L {bam_list} -t {target} --report-monomorphic \
-        ".format(ref=ref_genome, vcf=vcf, bam_list=bam_list_filename, target=targets)
-            
+#    args = args = " -f {ref} -v {vcf} -L {bam_list} -t {target} --report-monomorphic \
+#        ".format(ref=ref_genome, vcf=vcf, bam_list=bam_list_filename, target=targets)
+ 
+    args = args = " -f {ref} -v {vcf} -L {bam_list} -t {target} \
+                  --min-coverage {min_dp} --min-alternate-count {min_alt_dp} \
+                  --min-mapping-quality {mq} --report-monomorphic \
+                  ".format(ref=ref_genome, 
+                           vcf=vcf, 
+                           bam_list=bam_list_filename, 
+                           target=cfg.capture_plus,
+                           min_dp     = 20,
+                           min_alt_dp = 4,
+                           mq         = 30)           
+
     run_cmd(cfg, cfg.freebayes, args, cpus=threads, mem_per_cpu=int(mem/threads))
     
     os.remove(bam_list_filename)
 
 
-@merge(mark_dups, os.path.join(cfg.runs_scratch_dir, "multisample.vcf"))
+@merge(mark_dups, os.path.join(cfg.runs_scratch_dir, "multisample.fb.vcf"))
 def jointcall_variants(bams, vcf):
     """ Call variants using freebayes on trimmed (not merged) reads """
     call_variants_freebayes(bams, vcf, cfg.reference, cfg.capture_plus)
+
+
+
+#
+# TODO:
+# pcr_indel_model based on settings
+#
+@jobs_limit(16)
+@transform(mark_dups, suffix('.bam'), '.gvcf')
+def call_haplotypes(bam, output_gvcf):
+    """Perform variant calling using GATK HaplotypeCaller"""
+    cmd = "-T HaplotypeCaller \
+            -R {ref} \
+            -I {bam} \
+            -o {gvcf} \
+            --emitRefConfidence GVCF \
+            -L {target} \
+            -pcr_indel_model {pcr} \
+            ".format(ref=cfg.reference, 
+                     bam=bam, 
+                     gvcf=output_gvcf, 
+                     target=cfg.capture_plus,
+                     pcr='NONE')
+
+    run_cmd(cfg, cfg.gatk, args, '-Djava.io.tmpdir=%s -Xmx4g' % cfg.tmp_dir)
+
+
+@merge(call_haplotypes, os.path.join(cfg.runs_scratch_dir, 'multisample.gatk.vcf'))
+def genotype_gvcfs(gvcfs, output):
+    """Combine the per-sample GVCF files and genotype""" 
+    args = "-T GenotypeGVCFs \
+            -R {ref} \
+            -o {out} \
+            -dcov 3000 \
+            -nt {threads}" % (ref=cfg.reference, out=output, threads=cfg.num_jobs)
+       
+    for gvcf in gvcfs:
+        args += " --variant %s" % gvcf
+    
+    run_cmd(cfg, cfg.gatk, args, '-Xmx16g')
+
+
+
 
 
 #
