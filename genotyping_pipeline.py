@@ -512,8 +512,14 @@ def qc_bam_gene_coverage_metrics(input_bams, output):
                              capture=cfg.capture,
                              genes=cfg.gene_coordinates),
             interpreter_args="-Xmx4g")
-<<<<<<< HEAD
-
+    #os.remove(bam_list_file)
+    
+    
+    
+#############33
+#
+# by Dawid
+#    
 #########################################################################################
 
 def gene_coverage_sample_summary(input_dir,output_dir):
@@ -605,11 +611,6 @@ def gene_coverage_sample_gene_summary(input_dir,output_dir):
 
 ########################################################################################
 
-
-=======
-            
-           #os.remove(bam_list_file)
->>>>>>> e1ffbfcda9672c0275c505d9ea39cc14f7df894f
 
 @transform(align_reads, formatter(".*/(?P<SAMPLE_ID>[^/]+).bam"), '{subpath[0][1]}/qc/qualimap/{SAMPLE_ID[0]}')
 def qc_bam_qualimap_report(input_bam, output_dir):
