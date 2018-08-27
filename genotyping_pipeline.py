@@ -248,7 +248,7 @@ def archive_fastqs(completed_flag, archive_dir):
 #
 @jobs_limit(1)    # to avoid problems with simultanous creation of the same sample dir
 @follows(archive_fastqs)
-@subdivide(os.path.join(cfg.runs_scratch_dir,'fastqs','*.fastq.gz'),
+@subdivide(os.path.join(cfg.runs_scratch_dir,'fastqs','*_S[1-9]*.fastq.gz'),
            formatter('(?P<PATH>.+)/(?P<SAMPLE_ID>[^/]+)_S[1-9]\d?_R[12]_001\.fastq\.gz$'), 
            '{subpath[0][1]}/{SAMPLE_ID[0]}/{basename[0]}{ext[0]}')
 def link_fastqs(fastq_in, fastq_out):
@@ -259,7 +259,16 @@ def link_fastqs(fastq_in, fastq_out):
         os.symlink(fastq_in, fastq_out) 
 
     
-    
+   
+
+@follows(mkdir(os.path.join(cfg.runs_scratch_dir,'qc')), mkdir(os.path.join(cfg.runs_scratch_dir,'qc','read_qc')))
+@transform(link_fastqs, formatter('.+/(?P<SAMPLE_ID>[^/]+)\.fastq\.gz$'), 
+           os.path.join(cfg.runs_scratch_dir,'qc','read_qc/')+'{SAMPLE_ID[0]}_fastqc.html')
+def qc_raw_fastq(input_fastq, report):
+    """ Generate FastQC report for raw FASTQs """
+    produce_fastqc_report(cfg, input_fastq, os.path.dirname(report))
+
+ 
 #
 # Input FASTQ filenames are expected to have following format:
 #    [SAMPLE_ID]_[S_NUM]_[LANE_ID]_[R1|R2]_001.fastq.gz
@@ -286,6 +295,23 @@ def trim_reads(inputs, outputs):
                               adapter=cfg.adapters)
     max_mem = 2048
     run_cmd(cfg, cfg.trimmomatic, args, interpreter_args="-Xmx"+str(max_mem)+"m", cpus=1, mem_per_cpu=max_mem)
+
+
+
+
+
+@follows(mkdir(os.path.join(cfg.runs_scratch_dir,'qc')), mkdir(os.path.join(cfg.runs_scratch_dir,'qc','read_qc')))
+@transform(trim_reads, formatter('.+/(?P<SAMPLE_ID>[^/]+)\.fq1\.gz$', '.+/(?P<SAMPLE_ID>[^/]+)\.fq2\.gz$'), 
+	  [os.path.join(cfg.runs_scratch_dir,'qc','read_qc')+'/{SAMPLE_ID[0]}.fq1_fastqc.html',
+           os.path.join(cfg.runs_scratch_dir,'qc','read_qc')+'/{SAMPLE_ID[1]}.fq2_fastqc.html'])
+def qc_trimmed_fastq(input_fastqs, reports):
+    """ Generate FastQC report for trimmed FASTQs """
+    produce_fastqc_report(cfg, input_fastqs[0], os.path.dirname(reports[0]))
+    produce_fastqc_report(cfg, input_fastqs[1], os.path.dirname(reports[1]))
+
+
+
+
 
 
 ###########################
@@ -542,23 +568,23 @@ def qc_bam_gene_coverage_metrics_singlesample(input_bam, output, output_prefix):
        os.path.join(cfg.runs_scratch_dir, 'qc', 'all_samples.gene_coverage_metrics'))
 def qc_bam_aggregate_gene_coverage_metrics(gene_cov_files, output):
     """
-    JKoin several gene_coverage tables, side-to-side.
+    Join several gene_coverage tables, side-to-side.
     Basic assumption is that in all input tables genes are listed in the same order, and that files have equal number of lines/records
     """
     
     tmp_file_name = os.path.join(cfg.tmp_dir, 'all_samples.gene_coverage_metrics'+'.tmp'+time.time())
 
     # drop unecessary columns from first table
-    with first as open(gene_cov_files[0], 'r'), 
-        merged_gene_cov as open(output, 'w'):
+    with open(gene_cov_files[0], 'r') as first, \
+         open(output, 'w') as merged_gene_cov:
         for line in first.xreadlines():
             merged_gene_cov.write('\t'.join(line.split['\t'][0,3,4,8,9])+'\n')
 
     # glue rest of files to the right
     for i in range(1, len(gene_cov_files)):
-        with gene_cov_file as open(gene_cov_files[i], 'r'), 
-            merged_gene_cov as open(output, 'r'),
-            tmp_file as open(tmp_file_name, 'w'):
+        with open(gene_cov_files[i], 'r') as gene_cov_file, \
+             open(output, 'r') as merged_gene_cov, \
+             open(tmp_file_name, 'w') as tmp_file:
             
             for line in merged_gene_cov.xreadlines():
                 
@@ -659,7 +685,7 @@ def gene_coverage_sample_gene_summary(input_dir,output_dir):
     temp_files.remove(index_file_name + '.tsv')
     for var in range(0,len(temp_files)):
         second = pd.read_csv(path.join(dir, 'tempo/'+ temp_files[var]))
-        result = pd.concat([first, second], axis=1) #łaczenie plikow
+        result = pd.concat([first, second], axis=1) #laczenie plikow
         first = result
 
     result.to_csv(path_or_buf = '/pawels/scratch/dawid_test/all_sample.gene_coverage_summary.tsv')
@@ -769,16 +795,16 @@ def jointcall_variants(bams, vcf):
 # pcr_indel_model based on settings
 #
 @jobs_limit(16)
-@transform(mark_dups, suffix('.bam'), '.gvcf')
+@transform(mark_dups, suffix('.bam'), '.g.vcf')
 def call_haplotypes(bam, output_gvcf):
     """Perform variant calling using GATK HaplotypeCaller"""
-    cmd = "-T HaplotypeCaller \
+    args = "-T HaplotypeCaller \
             -R {ref} \
             -I {bam} \
             -o {gvcf} \
             --emitRefConfidence GVCF \
             -L {target} \
-            -pcr_indel_model {pcr} \
+            --pcr_indel_model {pcr} \
             ".format(ref=cfg.reference, 
                      bam=bam, 
                      gvcf=output_gvcf, 
@@ -795,7 +821,8 @@ def genotype_gvcfs(gvcfs, output):
             -R {ref} \
             -o {out} \
             -dcov 3000 \
-            -nt {threads}" % (ref=cfg.reference, out=output, threads=cfg.num_jobs)
+            -nt {threads} \
+            ".format(ref=cfg.reference, out=output, threads=cfg.num_jobs)
        
     for gvcf in gvcfs:
         args += " --variant %s" % gvcf
