@@ -544,8 +544,8 @@ def qc_bam_gene_coverage_metrics_multisample(input_bams, output):
     
     
            
-@transform(align_reads, suffix('.bam'), '.gene_coverage.sample_summary', r'\1.gene_coverage')
-def qc_bam_gene_coverage_metrics_singlesample(input_bam, output, output_prefix):
+@transform(align_reads, suffix('.bam'), '.gene_coverage.sample_gene_summary', r'\1.gene_coverage')
+def qc_bam_gene_coverage_metrics_singlesample(input_bam, _, output_prefix):
     """Calculates and outputs bam coverage statistics """      
     run_cmd(cfg, cfg.gatk, "-R {reference} \
                     -T DepthOfCoverage \
@@ -571,14 +571,18 @@ def qc_bam_aggregate_gene_coverage_metrics(gene_cov_files, output):
     Join several gene_coverage tables, side-to-side.
     Basic assumption is that in all input tables genes are listed in the same order, and that files have equal number of lines/records
     """
-    
-    tmp_file_name = os.path.join(cfg.tmp_dir, 'all_samples.gene_coverage_metrics'+'.tmp'+time.time())
+
+    import shutil
+
+    tmp_file_name = os.path.join(cfg.tmp_dir, 'all_samples.gene_coverage_metrics'+'.tmp.'+str(time.time()))
 
     # drop unecessary columns from first table
     with open(gene_cov_files[0], 'r') as first, \
          open(output, 'w') as merged_gene_cov:
-        for line in first.xreadlines():
-            merged_gene_cov.write('\t'.join(line.split['\t'][0,3,4,8,9])+'\n')
+        for l in first.xreadlines():
+            l_split = l.split('\t')
+            t = [l_split[e] for e in [0,4,8,9]]
+            merged_gene_cov.write('\t'.join(t)+'\n')
 
     # glue rest of files to the right
     for i in range(1, len(gene_cov_files)):
@@ -588,15 +592,16 @@ def qc_bam_aggregate_gene_coverage_metrics(gene_cov_files, output):
             
             for line in merged_gene_cov.xreadlines():
                 
-                new_cols = gene_cov_file.readline().split('\t')[3,4,8,9]
+                new_cols_line_split = gene_cov_file.readline().split('\t')
+                new_cols = [new_cols_line_split[e] for e in [4,8,9]]
                 
                 line = line.strip()
-                line += '\t' + new_cols + '\n'
+                line += '\t' + '\t'.join(new_cols) + '\n'
                 
                 tmp_file.write(line)
         
         # replace output with tmp
-        os.replace(tmp_file_name, output)
+        shutil.move(tmp_file_name, output)
 
 
     
