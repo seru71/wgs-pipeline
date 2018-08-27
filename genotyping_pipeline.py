@@ -18,6 +18,7 @@
 import sys
 import os
 import glob
+import time
 
 
 #88888888888888888888888888888888888888888888888888888888888888888888888888888888888888888
@@ -491,7 +492,7 @@ def qc_bam_target_coverage_metrics(input_bam, output, output_format):
 @follows(index)
 #@transform(align_reads, suffix('.bam'), '.gene_coverage.sample_summary', r'\1.gene_coverage')
 @merge(align_reads, os.path.join(cfg.runs_scratch_dir, 'qc', 'all_samples.coverage'))
-def qc_bam_gene_coverage_metrics(input_bams, output):
+def qc_bam_gene_coverage_metrics_multisample(input_bams, output):
     """Calculates and outputs bam coverage statistics """
     bam_list_file = os.path.join(cfg.tmp_dir, 'file_with_bam_lists.list')
     with open(bam_list_file,'w') as f:
@@ -512,9 +513,66 @@ def qc_bam_gene_coverage_metrics(input_bams, output):
                              capture=cfg.capture,
                              genes=cfg.gene_coordinates),
             interpreter_args="-Xmx4g")
+
     #os.remove(bam_list_file)
     
     
+           
+@transform(align_reads, suffix('.bam'), '.gene_coverage.sample_summary', r'\1.gene_coverage')
+def qc_bam_gene_coverage_metrics_singlesample(input_bam, output, output_prefix):
+    """Calculates and outputs bam coverage statistics """      
+    run_cmd(cfg, cfg.gatk, "-R {reference} \
+                    -T DepthOfCoverage \
+                    -o {output} \
+                    -I {bam} \
+                    -L {capture} \
+                    -geneList {genes} \
+                    -ct 10 -ct 20 \
+                    --omitDepthOutputAtEachBase --omitLocusTable \
+                    ".format(reference=cfg.reference,
+                             output=output_prefix,
+                             bam=input_bam,
+                             capture=cfg.capture,
+                             genes=cfg.gene_coordinates),
+            interpreter_args="-Xmx4g")
+
+
+
+@merge(qc_bam_gene_coverage_metrics_singlesample, 
+       os.path.join(cfg.runs_scratch_dir, 'qc', 'all_samples.gene_coverage_metrics'))
+def qc_bam_aggregate_gene_coverage_metrics(gene_cov_files, output):
+    """
+    JKoin several gene_coverage tables, side-to-side.
+    Basic assumption is that in all input tables genes are listed in the same order, and that files have equal number of lines/records
+    """
+    
+    tmp_file_name = os.path.join(cfg.tmp_dir, 'all_samples.gene_coverage_metrics'+'.tmp'+time.time())
+
+    # drop unecessary columns from first table
+    with first as open(gene_cov_files[0], 'r'), 
+        merged_gene_cov as open(output, 'w'):
+        for line in first.xreadlines():
+            merged_gene_cov.write('\t'.join(line.split['\t'][0,3,4,8,9])+'\n')
+
+    # glue rest of files to the right
+    for i in range(1, len(gene_cov_files)):
+        with gene_cov_file as open(gene_cov_files[i], 'r'), 
+            merged_gene_cov as open(output, 'r'),
+            tmp_file as open(tmp_file_name, 'w'):
+            
+            for line in merged_gene_cov.xreadlines():
+                
+                new_cols = gene_cov_file.readline().split('\t')[3,4,8,9]
+                
+                line = line.strip()
+                line += '\t' + new_cols + '\n'
+                
+                tmp_file.write(line)
+        
+        # replace output with tmp
+        os.replace(tmp_file_name, output)
+
+
     
 #############33
 #
@@ -627,7 +685,9 @@ def qc_bam_qualimap_report(input_bam, output_dir):
             interpreter_args="")
 
 
-@follows(qc_bam_alignment_metrics, qc_bam_target_coverage_metrics, qc_bam_qualimap_report)
+@follows(qc_aggregate_alignment_metrics, 
+         qc_bam_gene_coverage_metrics_multisample, 
+         qc_bam_qualimap_report)
 def bam_qc():
     """ Aggregates raw bam quality control steps """
     pass
