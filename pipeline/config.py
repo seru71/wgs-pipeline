@@ -203,6 +203,7 @@ class PipelineConfig:
         self.picard      = None
         self.gatk        = None
         self.freebayes   = None
+        self.bcftools    = None
         self.qualimap    = None
 
         # run settings
@@ -333,6 +334,7 @@ class PipelineConfig:
         self.picard      = config.get('Tools','picard')
         self.gatk        = config.get('Tools','gatk')
         self.freebayes   = config.get('Tools','freebayes')
+        self.bcftools    = config.get('Tools','bcftools')
         self.qualimap    = config.get('Tools','qualimap')
     
 

@@ -838,29 +838,19 @@ def split_snps(vcf, output, sample):
     run_cmd(cfg, cfg.gatk, args, interpreter_args="-Djava.io.tmpdir=%s -Xmx2g" % cfg.tmp_dir, mem_per_cpu=2048)
 
 
-#
-# TODO - update variant stats generation
-#
+
 @follows(mkdir(os.path.join(cfg.runs_scratch_dir,'qc')))
-@merge(split_snps, os.path.join(cfg.runs_scratch_dir,'qc','variant_qc'))
-def variants_qc(vcf, output):
+@transform(genotype_gvcfs, formatter(), '{subpath[0][1]}/qc/{basename[0]}{ext[0]}.stats')
+def qc_multisample_vcf(vcf, output):
     """ Generate variant QC table for all samples """    
-    args = "-T VariantEval \
-            -R {ref} \
-            -o {out} \
-            -noST -noEV -EV CountVariants \
-            ".format(ref=cfg.reference,
-                     vcf=vcf, 
-                     sample=sample, 
-                     out=output, 
-                     ad_thr=AD_threshold, 
-                     dp_thr=DP_threshold)
+    args = "stats -F {ref} -s - {vcf} > {out}\
+            ".format(ref=cfg.reference, 
+                     vcf=vcf,
+                     out=output)
     
-    for vcf in vcfs:
-        args += " --eval:{sample} {vcf}" % (os.path.basename(vcf), vcf)
-        
-    run_cmd(cfg, cfg.gatk, args, interpreter_args="-Djava.io.tmpdir=%s -Xmx2g" % cfg.tmp_dir, mem_per_cpu=2048)
+    run_cmd(cfg, cfg.bcftools, args)
     
+
 
 def archive_results():
     # if optional results_archive was not provided - do nothing
