@@ -336,7 +336,7 @@ class PipelineConfig:
         self.freebayes   = config.get('Tools','freebayes')
         self.bcftools    = config.get('Tools','bcftools')
         self.qualimap    = config.get('Tools','qualimap')
-    
+    	self.fastqc	 = config.get('Tools','fastqc')
 
         
 
