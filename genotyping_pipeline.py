@@ -848,8 +848,14 @@ def split_snp_parameters():
 
 
 @follows(jointcall_variants)
-@files(split_snp_parameters)
-def split_snps(vcf, output, sample):
+@follows(genotype_gvcfs)
+@transform(mark_dups, suffix(".bam"), ".vcf", 
+           os.path.join(cfg.runs_scratch_dir, cfg.run_id+'.multisample.vcf'))
+def split_snps(bams, vcf, multisample_vcf):
+    
+    
+    sample_id = os.path.basename(bam)[:-len('.dedup.bam')]
+    
     """ Split variants by sample, and use sample-specific statistics to filter: AD and DP"""
     AD_threshold=5
     DP_threshold=8
@@ -861,9 +867,9 @@ def split_snps(vcf, output, sample):
             -select 'vc.getGenotype(\\\"{sample}\\\").getAD().1 >= {ad_thr} && vc.getGenotype(\\\"{sample}\\\").getDP() >= {dp_thr}' \
             -o {out} \
             ".format(ref=cfg.reference,
-                     vcf=vcf, 
-                     sample=sample, 
-                     out=output, 
+                     vcf=multisample_vcf, 
+                     sample=sample_id, 
+                     out=vcf, 
                      ad_thr=AD_threshold, 
                      dp_thr=DP_threshold)
             
