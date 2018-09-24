@@ -872,7 +872,7 @@ def split_snps(vcf, output, sample):
 
 
 @follows(mkdir(os.path.join(cfg.runs_scratch_dir,'qc')))
-@transform(genotype_gvcfs, formatter(), '{subpath[0][1]}/qc/{basename[0]}{ext[0]}.stats')
+@transform(genotype_gvcfs, formatter(), '{subpath[0][0]}/qc/'+cfg.run_id+'.multisample.stats')
 def qc_multisample_vcf(vcf, output):
     """ Generate variant QC table for all samples """    
     args = "stats -F {ref} -s - {vcf} > {out}\
@@ -906,7 +906,7 @@ def cleanup_files():
 
 
 @posttask(archive_results, cleanup_files)
-@follows(bam_qc, variants_qc)
+@follows(bam_qc, qc_multisample_vcf)
 def complete_run():
     pass
 
