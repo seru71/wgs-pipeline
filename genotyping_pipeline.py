@@ -847,11 +847,11 @@ def split_snp_parameters():
         yield [multisample_vcf, os.path.join(cfg.runs_scratch_dir, s_id, s_id + '.vcf'), s_id]
 
 
-@follows(jointcall_variants)
+#@follows(jointcall_variants)
 @follows(genotype_gvcfs)
 @transform(mark_dups, suffix(".bam"), ".vcf", 
-           os.path.join(cfg.runs_scratch_dir, cfg.run_id+'.multisample.vcf'))
-def split_snps(bams, vcf, multisample_vcf):
+           os.path.join(cfg.runs_scratch_dir, 'multisample.gatk.vcf'))
+def split_snps(bam, vcf, multisample_vcf):
     
     
     sample_id = os.path.basename(bam)[:-len('.dedup.bam')]
@@ -864,15 +864,15 @@ def split_snps(bams, vcf, multisample_vcf):
             -R {ref} \
             --variant {vcf} \
             -sn {sample} \
-            -select 'vc.getGenotype(\\\"{sample}\\\").getAD().1 >= {ad_thr} && vc.getGenotype(\\\"{sample}\\\").getDP() >= {dp_thr}' \
             -o {out} \
             ".format(ref=cfg.reference,
                      vcf=multisample_vcf, 
                      sample=sample_id, 
-                     out=vcf, 
-                     ad_thr=AD_threshold, 
-                     dp_thr=DP_threshold)
-            
+                     out=vcf)
+#                     ad_thr=AD_threshold, 
+#                     dp_thr=DP_threshold)
+# -select 'vc.getGenotype(\\\"{sample}\\\").getAD().1 >= {ad_thr} && vc.getGenotype(\\\"{sample}\\\").getDP() >= {dp_thr}' \            
+
     run_cmd(cfg, cfg.gatk, args, interpreter_args="-Djava.io.tmpdir=%s -Xmx2g" % cfg.tmp_dir, mem_per_cpu=2048)
 
 
