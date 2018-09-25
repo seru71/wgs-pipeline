@@ -877,6 +877,13 @@ def split_snps(bam, vcf, multisample_vcf):
 
 
 
+##################
+#
+#  QC variants
+#
+#############
+
+
 @follows(mkdir(os.path.join(cfg.runs_scratch_dir,'qc')))
 @transform(genotype_gvcfs, formatter(), '{subpath[0][0]}/qc/'+cfg.run_id+'.multisample.stats')
 def qc_multisample_vcf(vcf, output):
@@ -888,6 +895,139 @@ def qc_multisample_vcf(vcf, output):
     
     run_cmd(cfg, cfg.bcftools, args)
     
+
+
+
+#####################
+#
+#   Annotate variants
+#
+##################
+
+import annotation
+
+@follows(mkdir(os.path.join(cfg.scratch_dir, 'annotation')))
+@transform(split_snps, formatter(), '{subpath[0][1]}/annotation/{basename[0]}.avinput')
+def prepare_annovar_inputs(vcf, output):
+    """ convert to annovar format """
+    args = "{vcf} -format vcf4 -withzyg -includeinfo -outfile {out} \
+        ".format(vcf=vcf, out=output))
+    run_cmd(cfg, cfg.convert_to_annovar, args)
+    
+   
+@transform(prepare_annovar_inputs, suffix('.avinput'), 
+                                        ['.avinput.hg19_EUR.sites.2015_08_filtered', 
+                                         '.avinput.hg19_EUR.sites.2015_08_dropped'])
+def filter_common_1000genomes(avinput, outputs):
+    """ filter common 1000 genomes variants """
+    args = "-build hg19 -filter -dbtype {eur1kg} -maf {maf} \
+            -outfile {output_prefix} {input_file} {annodb} \
+            ".format(eur1kg=annovar_1000genomes_eur,
+                    maf=annovar_1000genomes_eur_maf, 
+                    output_prefix=avinput,
+                    input_file=avinput, 
+                    annodb=cfg.annovar_human_db)
+    
+    run_cmd(cfg, cfg.annovar_annotate, args)
+
+
+#
+#
+# Currently not used / tested
+#
+@transform(filter_common_1000genomes, suffix('.hg19_EUR.sites.2014_10_filtered'),
+                                        ['.hg19_EUR.sites.2015_08_filtered.common_inhouse_filtered',
+                                         '.hg19_EUR.sites.2015_08_filtered.common_inhouse_dropped'])
+def filter_common_inhouse(inputs, outputs):
+    """ filter variants found in the inhouse databases """
+    filtered = inputs[0]              # use only the filtered input file, leave dropped
+    annotation.filter_common_inhouse(cfg, filtered, outputs)
+
+
+
+#@transform(filter_common_inhouse, suffix('.common_inhouse_filtered'), 
+#                                           ['.common_inhouse_filtered.variant_function',
+#                                         '.common_inhouse_filtered.exonic_variant_function',
+#                                         '.common_inhouse_filtered.variant_function.stats',
+#                                         '.common_inhouse_filtered.exonic_variant_function.stats'])
+@transform(filter_common_1000genomes, suffix('hg19_EUR.sites.2014_10_filtered'), 
+                                           ['.hg19_EUR.sites.2014_10_filtered.variant_function',
+                                         '.hg19_EUR.sites.2014_10_filtered.exonic_variant_function',
+                                         '.hg19_EUR.sites.2014_10_filtered.variant_function.stats',
+                                         '.hg19_EUR.sites.2014_10_filtered.exonic_variant_function.stats'])
+def annotate_function_of_rare_variants(inputs, outputs):
+    """ annotate functional change in rare variants """
+    filtered = inputs[0]              # use only the filtered input file, leave dropped
+    annotation.get_stats_on_prefiltered_variants(cfg, input_file=filtered, outputs=outputs[2:4], cleanup=False)
+
+
+@transform(annotate_function_of_rare_variants, 
+           formatter(".*/(?P<SAMPLE_ID>[^/]+).avinput.hg19_EUR.sites.2014_10_filtered.common_inhouse_filtered.variant_function", None, None, None),
+           ['{subpath[0][1]}/{SAMPLE_ID[0]}/{SAMPLE_ID[0]}.rare_coding_and_splicing.avinput', 
+            '{subpath[0][1]}/{SAMPLE_ID[0]}/{SAMPLE_ID[0]}.rare_coding_and_splicing.multianno.csv'])
+def produce_variant_annotation_table(inputs, outputs):
+    """ produce a table of various annotations per variant """
+    annotation.produce_variant_annotation_table(cfg, inputs[0], inputs[1], outputs[0], outputs[1])
+
+#'{path[1]}/{basename[1]}.with_omim.csv'
+@transform(produce_variant_annotation_table, suffix('.csv'), '.with_omim.tsv')
+def include_omim_phenotype_annotation(inputs, output_table):
+    """ add OMIM annotation to the table """
+    annotation.include_omim_phenotype_annotation(cfg, inputs[1], output_table)
+ 
+
+@transform(include_omim_phenotype_annotation, suffix('.tsv'), '.recessive.tsv')
+def extract_recessive_disorder_candidates(input_file, output_file):
+    """ extract a part of the annotated table that contains candidates for recessive disorders """ 
+    annotation.extract_recessive_disorder_candidates(input_file, output_file)
+
+##########################
+#
+# Annotated variants' QC 
+#
+######################
+
+@merge(prepare_annovar_inputs, ['hetz_per_chr.tsv','homz_per_chr.tsv'])
+def count_hetz_and_homz_per_chr(inputs, tables):
+    """ produce a table of sample vs chromosome counts of hetero- and homozygotic variants """
+    annotation.count_hetz_and_homz_per_chr(inputs, tables)
+
+
+@transform(prepare_annovar_inputs, suffix('.avinput'), ['.avinput.variant_function.stats','.avinput.exonic_variant_function.stats'])
+def get_stats_on_raw_variants(input_file, outputs):
+    """ annotate functional change in raw variants, get stats, and remove annotated files """
+    get_stats_on_prefiltered_variants(input_file, outputs)
+
+
+@transform(filter_common_1000genomes, suffix('.hg19_EUR.sites.2014_10_filtered'), 
+                                        ['.hg19_EUR.sites.2014_10_filtered.variant_function.stats',
+                                         '.hg19_EUR.sites.2014_10_filtered.exonic_variant_function.stats'])
+def get_stats_on_1kg_filtered_variants(inputs, outputs):
+    """ annotate functional change in 1kg filtered variants, get stats, and remove annotated files """
+    get_stats_on_prefiltered_variants(inputs[0], outputs)
+
+# equivalent of annotate_rare_variants (input and output files are the same)
+@transform(filter_common_inhouse, suffix('.common_inhouse_filtered'), 
+                                        ['.common_inhouse_filtered.variant_function.stats',
+                                         '.common_inhouse_filtered.exonic_variant_function.stats'])
+def get_stats_on_inhouse_filtered_variants(inputs, outputs):
+    """ annotate functional change in inhouse-exomes filtered variants, get stats, and remove annotated files """
+    get_stats_on_prefiltered_variants(inputs[0], outputs, cleanup=False)
+
+@merge([get_stats_on_raw_variants, 
+        get_stats_on_1kg_filtered_variants, 
+        get_stats_on_inhouse_filtered_variants], 
+        'all_samples_exonic_variant_stats.tsv')
+def produce_variant_stats_table(infiles, table_file):
+    """ produce a table of per-sample counts of different type of exonic variants """
+    annotation.produce_variant_stats_table(infiles, table_file)
+
+
+####################
+#
+#   Archive results
+#
+##################
 
 
 def archive_results():

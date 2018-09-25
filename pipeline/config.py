@@ -206,6 +206,18 @@ class PipelineConfig:
         self.bcftools    = None
         self.qualimap    = None
 
+        # annovar settings
+        self.convert_to_annovar = None
+        self.annovar_annotate   = None
+        self.table_annovar      = None
+        self.annovar_human_db                   = None
+        self.annovar_1000genomes_eur            = None
+        self.annovar_1000genomes_eur_nad_cutoff = None
+        self.annovar_inhouse_dbs                = None
+        self.omim_gene_phenotype_map            = None
+
+
+
         # run settings
         self.reference_root = None
         self.scratch_root = None
@@ -336,10 +348,19 @@ class PipelineConfig:
         self.freebayes   = config.get('Tools','freebayes')
         self.bcftools    = config.get('Tools','bcftools')
         self.qualimap    = config.get('Tools','qualimap')
-    	self.fastqc	 = config.get('Tools','fastqc')
+    	self.fastqc	     = config.get('Tools','fastqc')
 
+
+        # annovar settings
+        self.convert_to_annovar                 = config.get('Annovar','convert_to_annovar')
+        self.annovar_annotate                   = config.get('Annovar','annovar_annotate')
+        self.table_annovar                      = config.get('Annovar','table_annovar')
+        self.annovar_human_db                   = config.get('Annovar','annovar_human_db')
+        self.annovar_1000genomes_eur            = config.get('Annovar','annovar_1000genomes_eur')
+        self.annovar_1000genomes_eur_nad_cutoff = config.get('Annovar','annovar_1000genomes_eur_nad_cutoff')
+        self.annovar_inhouse_dbs                = config.get('Annovar','annovar_inhouse_dbs')
+        self.omim_gene_phenotype_map_file       = config.get('Annovar','omim_gene_phenotype_map_file')
         
-
     #def load_settings_from_JSON(self, settings):
         #""" Update setting with JSON dictionary """
         
