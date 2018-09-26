@@ -75,93 +75,13 @@ if __name__ == '__main__':
 #88888888888888888888888888888888888888888888888888888888888888888888888888888888888888888
 
 
-from ruffus.drmaa_wrapper import run_job, error_drmaa_job
-
-"""
-cmd is given in a form:
-    
-    command {args}
-    interpreter {interpreter_args} command {atgs}
-
-The strings {args} and {interpreter_args} are replaced with args and interpreter_args values.
-Examples of correct commands:
-    cmd = "bcl2fastq {args}"
-    cmd = "bcl2fastq -p param {args}"
-    cmd = "bcl2fastq -p2 param {args} -p2 param2"
-    cmd = "java {interpreter_args} -jar myjarfile.jar {args} -extras extra_arg
-    cmd = "java -XmX4G {interpreter_args} -jar myjarfile.jar {args} -extras extra_arg
-"""
-def run_cmd(cfg, cmd, args, interpreter_args=None, run_locally=True,
-            cpus=1, mem_per_cpu=1024, walltime='24:00:00', 
-            retain_job_scripts = True, job_script_dir = None):
-    
-    if job_script_dir is None:
-        job_script_dir = os.path.join(cfg.runs_scratch_dir, "drmaa")
-
-    full_cmd = "nice "+cmd.format(args=args, 
-                          interpreter_args = interpreter_args if interpreter_args!=None else "")
-
-    stdout, stderr = "", ""
-    job_options = "--ntasks=1 \
-                   --cpus-per-task={cpus} \
-                   --mem-per-cpu={mem} \
-                   --time={time} \
-                  ".format(cpus=cpus, mem=int(1.2*mem_per_cpu), time=walltime)
-    #print full_cmd                   
-    try:
-        stdout, stderr = run_job(full_cmd.strip(), 
-                                 job_other_options=job_options,
-                                 run_locally = run_locally, 
-                                 retain_job_scripts = retain_job_scripts, job_script_directory = job_script_dir,
-                                 logger=cfg.logger, working_directory=os.getcwd(),
-                                 drmaa_session = cfg.drmaa_session)
-    except error_drmaa_job as err:
-        raise Exception("\n".join(map(str, ["Failed to run:", cmd, err, stdout, stderr])))
-
-
-
-""" 
-Only default job scheduling params of run_command available when executing via SLURM.
-"""
-def run_piped_command(cfg, *args):
-    run_locally=True
-    retain_job_scripts = True
-    job_script_dir = os.path.join(cfg.runs_scratch_dir, "drmaa")	
-    cpus=1
-    mem_per_cpu=1024
-    walltime="24:00:00"
- 
-    stdout, stderr = "", ""
-    job_options = "--ntasks=1 \
-                   --cpus-per-task={cpus} \
-                   --mem-per-cpu={mem} \
-                   --time={time} \
-                  ".format(cpus=cpus, mem=int(1.2*mem_per_cpu), time=walltime)
-	
-    full_cmd = "nice " + expand_piped_command(*args)
-    print full_cmd	
-    try:
-        stdout, stderr = run_job(full_cmd.strip(), 
-                                 job_other_options=job_options,
-                                 run_locally = run_locally, 
-                                 retain_job_scripts = retain_job_scripts, job_script_directory = job_script_dir,
-                                 logger=cfg.logger, working_directory=os.getcwd(),
-                                 drmaa_session = cfg.drmaa_session)
-    except error_drmaa_job as err:
-        raise Exception("\n".join(map(str, ["Failed to run:", full_cmd, err, stdout, stderr])))
-	
-def expand_piped_command(cmd, cmd_args, interpreter_args=None, *args):
-	expanded_cmd = cmd.format(args=cmd_args, interpreter_args = interpreter_args if interpreter_args!=None else "")
-	expanded_cmd += (" | "+expand_piped_command(*args)) if len(args) > 0 else ""
-	return expanded_cmd
+from pipeline.utils import run_cmd, run_piped_command
 
 
 def produce_fastqc_report(cfg, fastq_file, output_dir=None):
     args = fastq_file
     args += (' -o '+output_dir) if output_dir != None else ''
     run_cmd(cfg, cfg.fastqc, args)
-
-
 
                             
 def index_bam(bam):
@@ -877,8 +797,15 @@ def split_snps(bam, vcf, multisample_vcf):
 
 
 
+##################
+#
+#  QC variants
+#
+#############
+
+
 @follows(mkdir(os.path.join(cfg.runs_scratch_dir,'qc')))
-@transform(genotype_gvcfs, formatter(), '{subpath[0][0]}/qc/'+cfg.run_id+'.multisample.stats')
+@transform(genotype_gvcfs, formatter(), os.path.join('{subpath[0][0]}','qc',cfg.run_id+'.variant_stats'))
 def qc_multisample_vcf(vcf, output):
     """ Generate variant QC table for all samples """    
     args = "stats -F {ref} -s - {vcf} > {out}\
@@ -888,6 +815,154 @@ def qc_multisample_vcf(vcf, output):
     
     run_cmd(cfg, cfg.bcftools, args)
     
+
+
+
+#####################
+#
+#   Annotate variants
+#
+##################
+
+from pipeline import annotation
+
+@follows(mkdir(os.path.join(cfg.runs_scratch_dir, 'annotation')))
+@transform(split_snps, formatter('.*/(?P<SAMPLE_ID>[^/]+).dedup.vcf'), 
+           '{subpath[0][1]}/annotation/{SAMPLE_ID[0]}.avinput')
+def prepare_annovar_inputs(vcf, output):
+    """ convert to annovar format """
+    args = "{vcf} -format vcf4 -withzyg -includeinfo -outfile {out} \
+        ".format(vcf=vcf, out=output)
+    run_cmd(cfg, cfg.convert_to_annovar, args)
+    
+   
+@transform(prepare_annovar_inputs, suffix('.avinput'), 
+                                        ['.avinput.hg19_EUR.sites.2015_08_filtered', 
+                                         '.avinput.hg19_EUR.sites.2015_08_dropped'])
+def filter_common_1000genomes(avinput, outputs):
+    """ filter common 1000 genomes variants """
+    args = "-build hg19 -filter -dbtype {eur1kg} -maf {maf} \
+            -outfile {output_prefix} {input_file} {annodb} \
+            ".format(eur1kg=cfg.annovar_1000genomes_eur,
+                    maf=cfg.annovar_1000genomes_eur_maf_cutoff, 
+                    output_prefix=avinput,
+                    input_file=avinput, 
+                    annodb=cfg.annovar_human_db)
+    
+    run_cmd(cfg, cfg.annovar_annotate, args)
+
+
+#
+#
+# Currently not used / tested
+#
+@transform(filter_common_1000genomes, suffix('.hg19_EUR.sites.2014_10_filtered'),
+                                        ['.hg19_EUR.sites.2015_08_filtered.common_inhouse_filtered',
+                                         '.hg19_EUR.sites.2015_08_filtered.common_inhouse_dropped'])
+def filter_common_inhouse(inputs, outputs):
+    """ filter variants found in the inhouse databases """
+    filtered = inputs[0]              # use only the filtered input file, leave dropped
+    annotation.filter_common_inhouse(cfg, filtered, outputs)
+
+
+
+#
+#
+# TODO: Refactor name of the get_stats_on_prefiltered_variants to reflect what it does. 
+# TODO: Check if table annotation can work straight on result of filter_common_inhouse/filter_common_1000genomes
+#
+
+#@transform(filter_common_inhouse, suffix('.common_inhouse_filtered'), 
+#                                           ['.common_inhouse_filtered.variant_function',
+#                                         '.common_inhouse_filtered.exonic_variant_function',
+#                                         '.common_inhouse_filtered.variant_function.stats',
+#                                         '.common_inhouse_filtered.exonic_variant_function.stats'])
+@transform(filter_common_1000genomes, suffix('hg19_EUR.sites.2015_08_filtered'), 
+                                           ['hg19_EUR.sites.2015_08_filtered.variant_function',
+                                         'hg19_EUR.sites.2015_08_filtered.exonic_variant_function',
+                                         'hg19_EUR.sites.2015_08_filtered.variant_function.stats',
+                                         'hg19_EUR.sites.2015_08_filtered.exonic_variant_function.stats'])
+def annotate_function_of_rare_variants(inputs, outputs):
+    """ annotate functional change in rare variants """
+    filtered = inputs[0]              # use only the filtered input file, leave dropped
+    annotation.get_stats_on_prefiltered_variants(cfg, input_file=filtered, outputs=outputs[2:4], cleanup=False)
+
+
+# with common_inhouse:      formatter(".*/(?P<SAMPLE_ID>[^/]+).avinput.hg19_EUR.sites.2015_08_filtered.common_inhouse_filtered.variant_function", None, None, None),
+@transform(annotate_function_of_rare_variants, 
+           formatter(".*/(?P<SAMPLE_ID>[^/]+).avinput.hg19_EUR.sites.2015_08_filtered.variant_function", None, None, None),
+           ['{subpath[0][1]}/{SAMPLE_ID[0]}/{SAMPLE_ID[0]}.rare_coding_and_splicing.avinput', 
+            '{subpath[0][1]}/{SAMPLE_ID[0]}/{SAMPLE_ID[0]}.rare_coding_and_splicing.multianno.csv'])
+def produce_variant_annotation_table(inputs, outputs):
+    """ produce a table of various annotations per variant """
+    annotation.produce_variant_annotation_table(cfg, inputs[0], inputs[1], outputs[0], outputs[1])
+
+#'{path[1]}/{basename[1]}.with_omim.csv'
+@transform(produce_variant_annotation_table, suffix('.csv'), '.with_omim.tsv')
+def include_omim_phenotype_annotation(inputs, output_table):
+    """ add OMIM annotation to the table """
+    annotation.include_omim_phenotype_annotation(cfg, inputs[1], output_table)
+ 
+
+@transform(include_omim_phenotype_annotation, suffix('.tsv'), '.recessive.tsv')
+def extract_recessive_disorder_candidates(input_file, output_file):
+    """ extract a part of the annotated table that contains candidates for recessive disorders """ 
+    annotation.extract_recessive_disorder_candidates(input_file, output_file)
+
+##########################
+#
+# Annotated variants' QC 
+#
+######################
+
+@merge(prepare_annovar_inputs, 
+       [os.path.join(cfg.runs_scratch_dir, 'qc',cfg.run_id+'.hetz_per_chr'),
+        os.path.join(cfg.runs_scratch_dir, 'qc',cfg.run_id+'.homz_per_chr')])
+def count_hetz_and_homz_per_chr(inputs, tables):
+    """ produce a table of sample vs chromosome counts of hetero- and homozygotic variants """
+    annotation.count_hetz_and_homz_per_chr(inputs, tables)
+
+
+@transform(prepare_annovar_inputs, suffix('.avinput'), ['.avinput.variant_function.stats','.avinput.exonic_variant_function.stats'])
+def get_stats_on_raw_variants(input_file, outputs):
+    """ annotate functional change in raw variants, get stats, and remove annotated files """
+    annotation.get_stats_on_prefiltered_variants(cfg, input_file, outputs, cleanup=True)
+
+
+@transform(filter_common_1000genomes, suffix('.hg19_EUR.sites.2015_08_filtered'), 
+                                        ['.hg19_EUR.sites.2015_08_filtered.variant_function.stats',
+                                         '.hg19_EUR.sites.2015_08_filtered.exonic_variant_function.stats'])
+def get_stats_on_1kg_filtered_variants(inputs, outputs):
+    """ annotate functional change in 1kg filtered variants, get stats, and remove annotated files """
+    annotation.get_stats_on_prefiltered_variants(cfg, inputs[0], outputs, cleanup=True)
+
+# equivalent of annotate_rare_variants (input and output files are the same)
+@transform(filter_common_inhouse, suffix('.common_inhouse_filtered'), 
+                                        ['.common_inhouse_filtered.variant_function.stats',
+                                         '.common_inhouse_filtered.exonic_variant_function.stats'])
+def get_stats_on_inhouse_filtered_variants(inputs, outputs):
+    """ annotate functional change in inhouse-exomes filtered variants, get stats, and remove annotated files """
+    annotation.get_stats_on_prefiltered_variants(cfg, inputs[0], outputs, cleanup=True)
+
+
+#@merge([get_stats_on_raw_variants,
+#        get_stats_on_1kg_filtered_variants,
+#        get_stats_on_inhouse_filtered_variants],
+#        'all_samples_exonic_variant_stats.tsv')
+@merge([get_stats_on_raw_variants, 
+        get_stats_on_1kg_filtered_variants, 
+        get_stats_on_1kg_filtered_variants], 
+        os.path.join(cfg.runs_scratch_dir, 'qc',cfg.run_id+'.annotated_variant_stats'))
+def produce_variant_stats_table(infiles, table_file):
+    """ produce a table of per-sample counts of different type of exonic variants """
+    annotation.produce_variant_stats_table(infiles, table_file)
+
+
+####################
+#
+#   Archive results
+#
+##################
 
 
 def archive_results():
