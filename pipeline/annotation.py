@@ -1,5 +1,5 @@
-
-from genotyping_pipeline import run_cmd
+import os
+from utils import run_cmd
 
 
 def filter_common_inhouse(cfg, input_variants, outputs):
@@ -19,7 +19,7 @@ def filter_common_inhouse(cfg, input_variants, outputs):
                 ".format(inhouse=inhouse_db, 
                          outfile=filtered[:-len('.tmp')], 
                          infile=filtered, 
-                         annodb=annovar_human_db))
+                         annodb=annovar_human_db)
                          
         run_cmd(cmd, cmd.annovar_annotate, args)
         
@@ -43,8 +43,8 @@ def get_stats_on_prefiltered_variants(cfg, input_file, outputs, cleanup=True):
     run_cmd(cfg, cfg.annovar_annotate, args)
 
     # calculate stats on files created by annovar - output files without ".stats" suffix
-    run_cmd("cut -f 1 {f} | sort | uniq -c > {f}.stats".format(f=outputs[0][:-len('.stats')]))
-    run_cmd("cut -f 2 {f} | sort | uniq -c > {f}.stats".format(f=outputs[1][:-len('.stats')]))
+    run_cmd(cfg, "cut -f 1 {f} | sort | uniq -c > {f}.stats".format(f=outputs[0][:-len('.stats')]), "")
+    run_cmd(cfg, "cut -f 2 {f} | sort | uniq -c > {f}.stats".format(f=outputs[1][:-len('.stats')]), "")
     # remove the annovar files
     if cleanup:
         os.remove(outputs[0][:-len('.stats')])
@@ -60,19 +60,19 @@ def produce_variant_annotation_table(cfg, variants_file, exonic_variants_file,
     for l in f.xreadlines():
         lsplit=l.split('\t')
         if lsplit[1] != 'synonymous SNV':
-            f_out.write(string.join(lsplit[3:],'\t'))
+            f_out.write('\t'.join(lsplit[3:]))
     f.close()
     f = open(variants_file)
     for l in f.xreadlines():
         lsplit=l.split('\t')
         if 'splicing' in (lsplit[0]).split(';'):
-            f_out.write(string.join(lsplit[2:],'\t'))
+            f_out.write('\t'.join(lsplit[2:]))
     f.close()
     f_out.close()
     
     # annotate all variants selected above
     
-    args = "--protocol refGene,1000g2015aug_eur,1000g2015aug_amr,1000g2015aug_eas,1000g2015aug_sas,1000g2015aug_afr,gnomad_genome,avsnp150,clinvar_20150330,ljb26_all \
+    args = "--protocol refGene,1000g2015aug_eur,1000g2015aug_amr,1000g2015aug_eas,1000g2015aug_sas,1000g2015aug_afr,gnomad_genome,avsnp150,clinvar_20180603,ljb26_all \
             --operation g,f,f,f,f,f,f,f,f,f --arg \'--splicing 4\',,,,,,,,, --nastring NA --build hg19 -csvout --otherinfo --remove \
             --outfile {output_prefix} {avinput} {db}".format(
             output_prefix=coding_and_splicing_output_file, 
@@ -116,8 +116,39 @@ def _get_omim_gene_phenotype_map(omim_file):
     return map_pht
 
 
+def quote_aware_split(string, delim=',', quote='"'):
+    """ Split outside of quotes (i.e. ignore delimiters within quotes."""
+    out = []
+    s = ''
+    open_quote=False
+    for c in string:
+        if c == quote: 
+            open_quote = not open_quote
+        if c == delim and not open_quote:
+            out += [s]
+            s = ''
+        else: 
+            s += c
+    return out + [s]
 
-from utility_functions import quote_aware_split, parenthesis_aware_split
+
+def parenthesis_aware_split(string, delim=',', open_par='(', close_par=')'):
+    """ Split outside of parenthesis (i.e. ignore delimiters within parenthesis."""
+    out = []
+    s = ''
+    open_parenthesis=0
+    for c in string:
+        if c == open_par: 
+            open_parenthesis+=1
+        if c == close_par and open_parenthesis > 0:
+            open_parenthesis-=1
+        if c == delim and open_parenthesis==0:
+            out += [s]
+            s = ''
+        else: 
+            s += c
+    return out + [s]
+
 
 def include_omim_phenotype_annotation(cfg, input_table, output_table, gene_column=7, omim_column=15, delim=','):
     
@@ -236,8 +267,8 @@ def count_hetz_and_homz_per_chr(infiles, table_files):
 
     hetz = open(table_files[0], 'w')
     homz = open(table_files[1], 'w')
-    hetz.write('sample\t'+string.join(chromosomes,'\t')+'\n')
-    homz.write('sample\t'+string.join(chromosomes,'\t')+'\n')
+    hetz.write('sample\t'+'\t'.join(chromosomes)+'\n')
+    homz.write('sample\t'+'\t'.join(chromosomes)+'\n')
     for fname in infiles:
         sample_id=os.path.basename(fname).split('.')[0]
         hetz.write(sample_id)

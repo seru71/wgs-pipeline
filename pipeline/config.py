@@ -212,7 +212,7 @@ class PipelineConfig:
         self.table_annovar      = None
         self.annovar_human_db                   = None
         self.annovar_1000genomes_eur            = None
-        self.annovar_1000genomes_eur_nad_cutoff = None
+        self.annovar_1000genomes_eur_maf_cutoff = None
         self.annovar_inhouse_dbs                = None
         self.omim_gene_phenotype_map            = None
 
@@ -352,12 +352,16 @@ class PipelineConfig:
 
 
         # annovar settings
-        self.convert_to_annovar                 = config.get('Annovar','convert_to_annovar')
-        self.annovar_annotate                   = config.get('Annovar','annovar_annotate')
-        self.table_annovar                      = config.get('Annovar','table_annovar')
-        self.annovar_human_db                   = config.get('Annovar','annovar_human_db')
+        self.convert_to_annovar                 = os.path.join(config.get('Annovar','annovar_home'), 
+                                                               config.get('Annovar','convert_to_annovar'))
+        self.annovar_annotate                   = os.path.join(config.get('Annovar','annovar_home'),
+                                                               config.get('Annovar','annovar_annotate'))
+        self.table_annovar                      = os.path.join(config.get('Annovar','annovar_home'), 
+                                                               config.get('Annovar','table_annovar'))
+        self.annovar_human_db                   = os.path.join(config.get('Annovar','annovar_home'),
+                                                               config.get('Annovar','annovar_human_db'))
         self.annovar_1000genomes_eur            = config.get('Annovar','annovar_1000genomes_eur')
-        self.annovar_1000genomes_eur_nad_cutoff = config.get('Annovar','annovar_1000genomes_eur_nad_cutoff')
+        self.annovar_1000genomes_eur_maf_cutoff = config.get('Annovar','annovar_1000genomes_eur_maf_cutoff')
         self.annovar_inhouse_dbs                = config.get('Annovar','annovar_inhouse_dbs')
         self.omim_gene_phenotype_map_file       = config.get('Annovar','omim_gene_phenotype_map_file')
         
