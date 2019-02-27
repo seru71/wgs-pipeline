@@ -33,13 +33,7 @@ def parse_cli_args():
     
     from optparse import OptionParser
 
-    parser = OptionParser(version="%prog 1.0", usage = "\n\n    %prog --run_folder PATH_TO_RUN_FOLDER [--settings pipeline_settings.cfg] [--target_task TASK] [more_options]")
-    
-    parser.add_option("-r", "--run_folder", dest="run_folder",
-                        metavar="FILE",
-                        type="string",
-                        help="Path to the input run folder.")                  
-    
+    parser = OptionParser(version="%prog 1.0", usage = "\n\n %prog [--settings pipeline_settings.cfg] [--target_task TASK] [more_options]")
                                 
     #
     #   general options: verbosity / logging
@@ -59,7 +53,7 @@ def parse_cli_args():
     parser.add_option("-s", "--settings", dest="pipeline_settings",
                         metavar="FILE",
                         type="string",
-                        help="File containing all the settings for the analysis. By default settings.cfg in the run_folder.")                  
+                        help="File containing all the settings for the analysis. By default settings.cfg in searched for in the current directory.")                  
     parser.add_option("-t", "--target_tasks", dest="target_tasks",
                         action="append",
                         metavar="JOBNAME",
@@ -92,15 +86,12 @@ def parse_cli_args():
     parser.add_option("--rebuild_mode", dest="rebuild_mode",
                         action="store_false", 
                         help="gnu_make_maximal_rebuild_mode")
-    parser.add_option("--run_on_bcl_tile", dest="run_on_bcl_tile",
-                        type="string",                        
-                        help="Use only this tile when doing bcl2fastq conversion. For testing purposes.")
     
     parser.set_defaults(pipeline_settings=None, 
                         jobs=1, verbose=0, 
                         target_tasks=list(), forced_tasks=list(), 
                         just_print=False, key_legend_in_graph=False,
-                        rebuild_mode=True, run_on_bcl_tile=None)
+                        rebuild_mode=True)
     
 
     # get help string
@@ -178,7 +169,6 @@ class PipelineConfig:
     #  - reference_root
     #  - scratch_root
     #  - results_archive
-    #  - fastq_archive
     #  - tmp_dir
     
 
@@ -195,7 +185,7 @@ class PipelineConfig:
         
         self.logger = None
         
-        self.bcl2fastq   = None
+        self.speedseq    = None
         self.trimmomatic = None
         self.fastqc      = None
         self.bwa         = None
@@ -221,9 +211,7 @@ class PipelineConfig:
         # run settings
         self.reference_root = None
         self.scratch_root = None
-        self.run_folder   = None
-#        self.input_fastqs = None
-        self.run_id       = None
+        self.input_fastqs = None
         self.runs_scratch_dir = None
         self.tmp_dir      = None
 
@@ -236,21 +224,11 @@ class PipelineConfig:
         self.verbosity_level = 0
         self.dry_run         = False
         self.rebuild_mode    = False
-        self.run_on_bcl_tile = None
 
 
     def set_logger(self, logger):
         self.logger = logger
    
-    def set_runfolder(self, runfolder):
-        if runfolder != None and \
-            os.path.exists(runfolder) and \
-            os.path.exists(os.path.join(runfolder,'SampleSheet.csv')):
-
-            self.run_folder = runfolder
-            
-        else:
-            raise Exception("Incorrect runfolder\'s path [%s] or missing SampleSheet file." % runfolder)
 
     def set_num_jobs(self,jobs):
         if jobs is not None:
@@ -283,6 +261,8 @@ class PipelineConfig:
         config.read(cfg_file)
         
         
+        self.input_fastqs = glob.glob(config.get('Paths','input-fastqs')
+        
         self.reference_root = config.get('Paths','reference-root')
         
         self.scratch_root = os.getcwd()
@@ -290,35 +270,13 @@ class PipelineConfig:
             self.scratch_root   = config.get('Paths','scratch-root')
         except ConfigParser.NoOptionError:
             self.logger.info('Scratch-root setting is missing. Using current directory: %s' % self.scratch_root)
-
-
-        if (self.run_folder != None):
-            self.run_id = os.path.basename(self.run_folder)
-        else:
-            raise Exception('Set runfolder with PipelineConfig.set_runfolder() before loading settings')
                   
-        
-        #
-        # TODO
-        # needs to be updated on update of settings
-        #
-        self.runs_scratch_dir = os.path.join(self.scratch_root, self.run_id) if self.run_folder != None else self.scratch_root
-        self.logger.info('Run\'s scratch directory: %s' % self.runs_scratch_dir)
-          
-        # optional results and fastq archive dirs  
-        self.results_archive = None
-        try:
-            self.results_archive = config.get('Paths','results-archive')
-        except ConfigParser.NoOptionError:
-            self.logger.info('No results-archive provided. Results will not be archived outside of the run\'s scratch directory.')
-        
-        self.fastq_archive = None
-        try:
-            self.fastq_archive = config.get('Paths','fastq-archive')
-        except ConfigParser.NoOptionError:
-            self.logger.info('No fastq-archive provided. Fastq files will not be archived outside of the run\'s scratch directory.')
     
-        
+        # workdir
+        self.runs_scratch_dir = self.scratch_root
+        self.logger.info('Work directory: %s' % self.runs_scratch_dir)
+                  
+                          
         # optional /tmp dir
         self.tmp_dir = '/tmp'
         try:
@@ -326,20 +284,15 @@ class PipelineConfig:
         except ConfigParser.NoOptionError:
             self.logger.info('No tmp-dir provided. /tmp will be used.')
   
-  
-                  
+                    
             
         # reference files
         self.reference = os.path.join(self.reference_root, config.get('Resources','reference-genome'))
-        self.capture = os.path.join(self.reference_root, config.get('Resources','capture-regions-bed'))
-        self.capture_qualimap = os.path.join(self.reference_root, config.get('Resources','capture-regions-bed-for-qualimap'))
-        self.capture_plus = os.path.join(self.reference_root, config.get('Resources', 'capture-plus-regions-bed'))
-        self.gene_coordinates = os.path.join(self.reference_root, config.get('Resources', 'gene-coordinates'))
-        
+        self.gene_coordinates = os.path.join(self.reference_root, config.get('Resources', 'gene-coordinates'))       
         self.adapters = os.path.join(self.reference_root, config.get('Resources', 'adapters-fasta'))
         
         # tools
-        self.bcl2fastq   = config.get('Tools','bcl2fastq')
+        self.speedseq    = config.get('Tools','speedseq')
         self.trimmomatic = config.get('Tools','trimmomatic') 
         self.bwa         = config.get('Tools','bwa')
         self.samtools    = config.get('Tools','samtools')
@@ -382,9 +335,8 @@ class PipelineConfig:
             return False
         # check task names?
         
-        if self.run_folder is None or \
-            not os.path.exists(self.run_folder) or \
-            not os.path.exists(os.path.join(self.run_folder, self.run_id, 'SampleSheet.csv')):
+        if len(self.input_fastqs) < 2 or \
+            not os.path.exists(self.runs_scratch_dir)
             return False
             
         return True

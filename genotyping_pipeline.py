@@ -2,8 +2,7 @@
 """
 
     genotyping_pipeline.py
-                        --run_folder PATH
-                        [--settings PATH] (by default RUN_FOLDER/settings.cfg)
+                        [--settings PATH] (by default ./settings.cfg)
                         [--log_file PATH]
                         [--verbose]
                         [--target_tasks]  (by default the last task in the pipeline)
@@ -12,7 +11,6 @@
                         [--flowchart]
                         [--key_legend_in_graph]
                         [--forced_tasks]
-                        [--run_on_bcl_tile TILE_REGEX]
 
 """
 import sys
@@ -40,7 +38,7 @@ if __name__ == '__main__':
     # parse command-line args, and check for mandatory options
     options, helpstr = pipeline.config.parse_cli_args()
     pipeline.config.check_mandatory_options(options, 
-                                        mandatory_options = ['run_folder'], 
+                                        mandatory_options = [], 
                                         help_text=helpstr)
     
     # configure logging
@@ -56,10 +54,9 @@ if __name__ == '__main__':
     # Get pipeline settings from a config file  
     cfg = pipeline.config.PipelineConfig() 
     cfg.set_logger(logger)
-    cfg.set_runfolder(options.run_folder)
     cfg.set_num_jobs(options.jobs)
     cfg.load_settings_from_file(options.pipeline_settings if options.pipeline_settings != None 
-                                                        else os.path.join(options.run_folder, 'settings.cfg') )
+                                                        else "settings.cfg")
 
     # init drmaa
     cfg.drmaa_session = drmaa.Session()
@@ -119,46 +116,6 @@ def get_num_files():
 from ruffus import *
 
 
-#
-#
-# Prepare FASTQ
-# 
-
-@follows(mkdir(cfg.runs_scratch_dir), mkdir(os.path.join(cfg.runs_scratch_dir,'fastqs')))
-@files(cfg.run_folder, os.path.join(cfg.runs_scratch_dir,'fastqs','completed'))
-@posttask(touch_file(os.path.join(cfg.runs_scratch_dir,'fastqs','completed')))
-def bcl2fastq_conversion(run_directory, completed_flag):
-    """ Run bcl2fastq conversion and create fastq files in the run directory"""
-    out_dir = os.path.join(cfg.runs_scratch_dir,'fastqs')
-    interop_dir = os.path.join(out_dir,'InterOp')
-
-    # r, w, d, and p specify numbers of threads to be used for each of the concurrent subtasks of the conversion (see bcl2fastq manual) 
-    #args = "-R {indir} -o {outdir} --interop-dir={interopdir} -r1 -w1 -d2 -p4 \
-    args = "-R {indir} -o {outdir} --no-lane-splitting \
-            ".format(indir=run_directory, outdir=out_dir, interopdir=interop_dir)
-    if cfg.run_on_bcl_tile != None:
-        args += " --tiles %s" % cfg.run_on_bcl_tile
-    run_cmd(cfg, cfg.bcl2fastq, args, cpus=8, mem_per_cpu=2048)
-    
-
-
-@active_if(cfg.fastq_archive != None)
-@transform(bcl2fastq_conversion, formatter(".+/(?P<RUN_ID>[^/]+)/fastqs/completed"), str(cfg.fastq_archive)+"/{RUN_ID[0]}")
-def archive_fastqs(completed_flag, archive_dir):
-    """ Archive fastqs """    
-    fq_dir = os.path.dirname(completed_flag)
-
-# uncomment if archive should not be overwritten (risk of creating many archives of the same run)
-#    if os.path.exists(archive_dir):
-#	import time
-#	archive_dir += "_archived_"+str(time.strftime("%Y%m%d_%H%M%S"))
-
-    import shutil
-    shutil.move(fq_dir, archive_dir)
-    os.mkdir(fq_dir)
-    for f in glob.glob(os.path.join(archive_dir,"*.fastq.gz")):
-        os.symlink(f, os.path.join(fq_dir,os.path.basename(f)))
-
 
 #
 # Prepare directory for every sample and link the input fastq files
@@ -167,9 +124,8 @@ def archive_fastqs(completed_flag, archive_dir):
 # SAMPLE_ID can contain all signs except path delimiter, i.e. "\"
 #
 @jobs_limit(1)    # to avoid problems with simultanous creation of the same sample dir
-@follows(archive_fastqs)
-@subdivide(os.path.join(cfg.runs_scratch_dir,'fastqs','*_S[1-9]*.fastq.gz'),
-           formatter('(?P<PATH>.+)/(?P<SAMPLE_ID>[^/]+)_S[1-9]\d?_R[12]_001\.fastq\.gz$'), 
+@subdivide(cfg.input_fastqs,
+           formatter('(?P<PATH>.+)/(?P<SAMPLE_ID>[^/]+)_R[12].fastq\.gz$'), 
            '{subpath[0][1]}/{SAMPLE_ID[0]}/{basename[0]}{ext[0]}')
 def link_fastqs(fastq_in, fastq_out):
     """Make working directory for every sample and link fastq files in"""
@@ -191,15 +147,14 @@ def qc_raw_fastq(input_fastq, report):
  
 #
 # Input FASTQ filenames are expected to have following format:
-#    [SAMPLE_ID]_[S_NUM]_[LANE_ID]_[R1|R2]_001.fastq.gz
-# In this step, the two FASTQ files matching on the [SAMPLE_ID]_[S_ID]_[LANE_ID] will be trimmed together (R1 and R2). 
+#    [SAMPLE_ID]_[R1|R2].fastq.gz
+# In this step, the two FASTQ files matching on the [SAMPLE_ID] will be trimmed together (R1 and R2). 
 # The output will be written to two FASTQ files
-#    [SAMPLE_ID]_[LANE_ID].fq1.gz
-#    [SAMPLE_ID]_[LANE_ID].fq2.gz
+#    [SAMPLE_ID].fq1.gz
+#    [SAMPLE_ID].fq2.gz
 # SAMPLE_ID can contain all signs except path delimiter, i.e. "\"
 #
-#@collate(link_fastqs, regex(r'(.+)/([^/]+)_S[1-9]\d?_R[12]_001\.fastq\.gz$'),  r'\1/\2.fq1.gz')
-@collate(link_fastqs, regex(r'(.+)/([^/]+)_S[1-9]\d?_R[12]_001\.fastq\.gz$'),  (r'\1/\2.fq1.gz',r'\1/\2.fq2.gz'))
+@collate(link_fastqs, regex(r'(.+)/([^/]+)_R[12].fastq\.gz$'),  (r'\1/\2.fq1.gz',r'\1/\2.fq2.gz'))
 def trim_reads(inputs, outputs):
     unpaired = [outputs[0].replace('fq1.gz','fq1_unpaired.gz'), outputs[1].replace('fq2.gz','fq2_unpaired.gz')]               
     # logfile = output.replace('fq1.gz','trimmomatic.log')
@@ -255,101 +210,23 @@ def bwa_map_and_sort(output_bam, ref_genome, fq1, fq2=None, read_group=None, thr
 	                       cfg.samtools, samtools_args, None)
 
 
-"""
-Could it be used to merge LANE bams for each sample?
-
-
-def map_reads(fastq_list, ref_genome, output_bam, read_groups=None):
-    
-    # If no read groups is provided, we could make up default ones based on fq filenames.
-    # This would most likely result in unpaired FQs ending up in different read group ids, and in consequence, being genotyped separately
-    if read_groups==None:
-        s_ids = [ os.path.basename(s[0][:-len('.fq1.gz')] if isinstance(s, tuple) else s[:-len('fq.gz')]) for s in fastq_list ]
-        read_groups = [ '@RG\tID:{sid}\tSM:{sid}\tLB:{sid}'.format(sid=s) for s in s_ids]
-    
-    tmp_bams = [ output_bam+str(i) for i in range(0, len(fastq_list)) ]
-    for i in range(0, len(fastq_list)):
-		if isinstance(fastq_list[i], tuple):
-			bwa_map_and_sort(tmp_bams[i], ref_genome, fastq_list[i][0], fastq_list[i][1], read_groups[i])
-		else:
-			bwa_map_and_sort(tmp_bams[i], ref_genome, fastq_list[i], read_groups[i])   
-    
-    merge_bams(output_bam, *tmp_bams)
-    
-    for f in tmp_bams:
-		  os.remove(f)
-
-"""
-
 #
 # FASTQ filenames are expected to have following format:
-#    [SAMPLE_ID]_[LANE_ID].fq[1|2].gz
+#    [SAMPLE_ID].fq[1|2].gz
 # In this step, the fq1 file coming from trim_reads is matched with the fq2 file and mapped together. 
 # The output will be written to BAM file:
-#    [SAMPLE_ID]_[LANE_ID].bam
+#    [SAMPLE_ID].bam
 #
-#@transform(trim_reads, suffix('.fq1.gz'), add_inputs(r'\1.fq2.gz'), '.bam', )
-#@transform(trim_reads, formatter("(.+)/(?P<SAMPLE_ID>[^/]+)_(?P<LANE_ID>L\d\d\d).fq[12]\.gz$"), 
-#        "{subpath[0][0]}/{SAMPLE_ID[0]}_{LANE_ID[0]}.bam", "{SAMPLE_ID[0]}", "{LANE_ID[0]}")
 @jobs_limit(4)
 @transform(trim_reads, formatter("(.+)/(?P<SAMPLE_ID>[^/]+).fq[12]\.gz$"), 
         "{subpath[0][0]}/{SAMPLE_ID[0]}.bam", "{SAMPLE_ID[0]}")
 def align_reads(fastqs, bam, sample_id):  
-    # construct read group information from fastq file name (assuming [SAMPLE_ID]_[LANE_ID].fq[1|2].gz format)
-    #sample_lane = os.path.basename(fastqs[0])[0:-len(".fq1.gz")]
-    #sample = "_".join(sample_lane.split("_")[0:-1])
-    #lane = sample_lane.split("_")[-1]
     sample=sample_id
     read_group = "@RG\\tID:{id}\\tSM:{sm}\\tLB:{lb}\\tPL:{pl}\
                  ".format(id=sample, sm=sample, lb=sample, pl="ILLUMINA")
-                 
-    #args = "mem -t {threads} -R {rg} {ref} {fq1} {fq2} \
-	#    ".format(threads=threads, rg=read_group, ref=reference, 
-    #                 fq1=fastqs[0], fq2=fastqs[1])
-    #iargs = "samtools view -b -o {bam} -".format(bam=bam)
-
-    #run_cmd(cfg, bwa, args, interpreter_args=iargs, cpus=threads, mem_per_cpu=8192/threads)
-    
     bwa_map_and_sort(bam, cfg.reference, fastqs[0], fastqs[1], read_group=read_group, threads=4)
 
 
-#
-# TODO can we merge in the align reads function?
-#
-
-
-#
-# BAM filenames are expected to have following format:
-#    [SAMPLE_ID]_[LANE_ID].bam
-# In this step, all BAM files matching on the SAMPLE_ID will be merged into one BAM file:
-#    [SAMPLE_ID].bam
-# SAMPLE_ID can contain all signs except path delimiter, i.e. "\"
-#
-"""
-@jobs_limit(4)    # to avoid filesystem problems 
-@collate(align_reads, regex(r"(.+)/([^/]+).+\.bam$"),  r'\1/\2.bam')
-def merge_lanes(lane_bams, out_bam):
-    args = "MergeSamFiles O={bam} \
-            ASSUME_SORTED=false \
-            MAX_RECORDS_IN_RAM=2000000 \
-            USE_THREADING=true \
-            ".format(bam=out_bam)
-    # include all bam files as args
-    for bam in lane_bams:
-        args += " I={bam}".format(bam=bam)
-        
-    run_cmd(cfg, cfg.picard, args, interpreter_args="-Xmx8g", cpus=4, mem_per_cpu=2048)
-    
-
-def clean_fastqs_and_lane_bams():
-    "" Remove the trimmed fastq files, and SAM files. Links to original fastqs are kept ""
-    for f in glob.glob(os.path.join(cfg.runs_scratch_dir,'*','*.fq[12]*.gz')):
-        os.remove(f)
-    for f in glob.glob(os.path.join(cfg.runs_scratch_dir,'*','*_L\d\d\d.bam')):
-        os.remove(f)
-"""
-
-#@posttask(clean_fastqs_and_lane_bams)
 @transform(align_reads, suffix(".bam"), '.bam.bai')
 def index(bam, output):
     """Create raw bam index"""
@@ -525,100 +402,6 @@ def qc_bam_aggregate_gene_coverage_metrics(gene_cov_files, output):
 
 
     
-#############33
-#
-# by Dawid
-#    
-#########################################################################################
-
-def gene_coverage_sample_summary(input_dir,output_dir):
-    import os,tsv
-    output_dir = '/pawels/scratch/dawid_test/all_sample.sample_coverage_summary.tsv'
-    input_dir = '/pawels/scratch/dawid_test/sample_summary'
-
-
-
-
-    writer = tsv.TsvWriter(open(output_dir, "w"))
-    
-    num = 0
-    for filename in os.listdir(input_dir):
-        if len(filename) == 4:
-            new_input_dir = os.path.join(input_dir, filename)
-            for files in os.listdir(new_input_dir):
-                os.chdir(new_input_dir)
-                with open(files,'r') as f:
-                    for line in f:
-                        
-                        line = line.strip('\n')
-                        splited = line.split(' ')
-                        splited = filter(None, splited)
-                        
-                        if line.startswith('sample_id') and num == 0:
-                            writer.list_line(splited)
-                            num +=1
-                            
-                        elif line.startswith(filename):
-                            print splited
-                            writer.list_line(splited)
-
-    writer.close()
-   
-    
-
-
-def gene_coverage_sample_gene_summary(input_dir,output_dir): 
-
-    import pandas as pd
-    import os, tsv, shutil
-
-    if not os.path.exists('/pawels/scratch/dawid_test/temporary'):
-        os.makedirs('/pawels/scratch/dawid_test/temporary')
-
-    input_dir = '/pawels/scratch/dawid_test/'
-
-    cutted_list = []
-    num = 0
-    temp_files = []
-
-    for filename in os.listdir(input_dir):
-        if len(filename) == 4:
-            new_input_dir = os.path.join(input_dir, filename)
-            for files in os.listdir(new_input_dir):
-                os.chdir(new_input_dir)
-                if files == filename + '.gene_coverage.sample_gene_summary':
-                    with open(files,'r') as f:
-                        writer = tsv.TsvWriter(open(('/pawels/scratch/dawid_test/temporary' + filename) + '.tsv', "w"))
-                        for line in f:
-                            line = line.strip('\n')
-                            splited = line.split(' ')
-                            splited = filter(None, splited)
-                            if num == 0:
-                                cutted_list.extend([splited[0]]) #tworzenie indexu nazw
-                                index_file_name = filename
-                            cutted_list.extend([splited[2],splited[9],splited[10]])
-                            writer.list_line(cutted_list)
-                            cutted_list = cutted_list[5:]
-                            num +=1  
-    writer.close()
-
-    for filename in os.listdir('/pawels/scratch/dawid_test/temporary'):
-        temp_files.append(filename)
-   
-    dir = path.dirname(__file__);
-    first = pd.read_csv(path.join(dir, 'tempo/'+ index_file_name +'.tsv'))  #laczenie tsv wertykalnie uzywajac pandas
-    temp_files.remove(index_file_name + '.tsv')
-    for var in range(0,len(temp_files)):
-        second = pd.read_csv(path.join(dir, 'tempo/'+ temp_files[var]))
-        result = pd.concat([first, second], axis=1) #laczenie plikow
-        first = result
-
-    result.to_csv(path_or_buf = '/pawels/scratch/dawid_test/all_sample.gene_coverage_summary.tsv')
-    if os.path.exists('/pawels/scratch/dawid_test/temporary'):
-        shutil.rmtree('/pawels/scratch/dawid_test/temporary')   #usuwanie tymczasowego katalogu i jego zawartosci
-
-
-########################################################################################
 
 
 @transform(align_reads, formatter(".*/(?P<SAMPLE_ID>[^/]+).bam"), '{subpath[0][1]}/qc/qualimap/{SAMPLE_ID[0]}')
@@ -655,6 +438,7 @@ def bam_qc():
 
 #
 # TODO: can we mark/remove dups on the fly, e.g. with sambamba. Samtools requires fixmate which requires name-sorted order
+#  Lookup the GATK pipeline
 #
 
 @follows(index)
@@ -762,7 +546,7 @@ def genotype_gvcfs(gvcfs, output):
 # TODO - how to split variants in elegantly?
 #
 def split_snp_parameters():
-    multisample_vcf = os.path.join(cfg.runs_scratch_dir, cfg.run_id+'.multisample.vcf')
+    multisample_vcf = os.path.join(cfg.runs_scratch_dir, "multisample.vcf")
     for s_id in get_sample_ids():
         yield [multisample_vcf, os.path.join(cfg.runs_scratch_dir, s_id, s_id + '.vcf'), s_id]
 
@@ -805,7 +589,7 @@ def split_snps(bam, vcf, multisample_vcf):
 
 
 @follows(mkdir(os.path.join(cfg.runs_scratch_dir,'qc')))
-@transform(genotype_gvcfs, formatter(), os.path.join('{subpath[0][0]}','qc',cfg.run_id+'.variant_stats'))
+@transform(genotype_gvcfs, formatter(), os.path.join('{subpath[0][0]}','qc','multisample.variant_stats'))
 def qc_multisample_vcf(vcf, output):
     """ Generate variant QC table for all samples """    
     args = "stats -F {ref} -s - {vcf} > {out}\
@@ -916,8 +700,8 @@ def extract_recessive_disorder_candidates(input_file, output_file):
 ######################
 
 @merge(prepare_annovar_inputs, 
-       [os.path.join(cfg.runs_scratch_dir, 'qc',cfg.run_id+'.hetz_per_chr'),
-        os.path.join(cfg.runs_scratch_dir, 'qc',cfg.run_id+'.homz_per_chr')])
+       [os.path.join(cfg.runs_scratch_dir, 'qc','multisample.hetz_per_chr'),
+        os.path.join(cfg.runs_scratch_dir, 'qc','multisample.homz_per_chr')])
 def count_hetz_and_homz_per_chr(inputs, tables):
     """ produce a table of sample vs chromosome counts of hetero- and homozygotic variants """
     annotation.count_hetz_and_homz_per_chr(inputs, tables)
@@ -952,7 +736,7 @@ def get_stats_on_inhouse_filtered_variants(inputs, outputs):
 @merge([get_stats_on_raw_variants, 
         get_stats_on_1kg_filtered_variants, 
         get_stats_on_1kg_filtered_variants], 
-        os.path.join(cfg.runs_scratch_dir, 'qc',cfg.run_id+'.annotated_variant_stats'))
+        os.path.join(cfg.runs_scratch_dir, 'qc','multisample.annotated_variant_stats'))
 def produce_variant_stats_table(infiles, table_file):
     """ produce a table of per-sample counts of different type of exonic variants """
     annotation.produce_variant_stats_table(infiles, table_file)
@@ -960,22 +744,9 @@ def produce_variant_stats_table(infiles, table_file):
 
 ####################
 #
-#   Archive results
+#   Cleanup intermediate files
 #
 ##################
-
-
-def archive_results():
-    # if optional results_archive was not provided - do nothing
-    if cfg.results_archive == None: return
-    arch_path = os.path.join(cfg.results_archive, cfg.run_id)
-    if not os.path.exists(arch_path): 
-        os.mkdir(arch_path)
-        
-    run_cmd(cfg, "cp %s/*/*.bam %s" % (cfg.runs_scratch_dir,arch_path), "", run_locally=True)
-    run_cmd(cfg, "cp %s/*/*.bam.gene_coverage* %s" % (cfg.runs_scratch_dir,arch_path), "", run_locally=True)
-    run_cmd(cfg, "cp %s/*/*.vcf %s" % (cfg.runs_scratch_dir,arch_path), "", run_locally=True)
-    run_cmd(cfg, "cp -r %s/qc %s" % (cfg.runs_scratch_dir,arch_path), "", run_locally=True)
 
 
 def cleanup_files():
