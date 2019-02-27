@@ -72,28 +72,6 @@ if __name__ == '__main__':
 #88888888888888888888888888888888888888888888888888888888888888888888888888888888888888888
 
 
-from pipeline.utils import run_cmd, run_piped_command
-
-
-def produce_fastqc_report(cfg, fastq_file, output_dir=None):
-    args = fastq_file
-    args += (' -o '+output_dir) if output_dir != None else ''
-    run_cmd(cfg, cfg.fastqc, args)
-
-                            
-def index_bam(bam):
-    """Use samtools to create an index for the bam file"""
-    run_cmd(cfg, cfg.samtools, "index %s" % bam)
-                          
-def bam_quality_score_distribution(bam,qs,pdf):
-    """Calculates quality score distribution histograms"""
-    run_cmd(cfg, cfg.picard, "QualityScoreDistribution \
-                    CHART_OUTPUT={chart} \
-                    OUTPUT={out} \
-                    INPUT={bam} \
-                    VALIDATION_STRINGENCY=SILENT \
-                    ".format(chart=pdf, out=qs, bam=bam),
-            interpreter_args="")
 
 
 def get_sample_ids():
@@ -106,21 +84,22 @@ def get_num_files():
     return len(get_sample_ids())
     
 
-
 #88888888888888888888888888888888888888888888888888888888888888888888888888888888888888888
 
 #   Pipeline
 
 #88888888888888888888888888888888888888888888888888888888888888888888888888888888888888888
 
-from ruffus import *
 
+from pipeline.utils import run_cmd, run_piped_command
+from pipeline.tasks import produce_fastqc_report, samtools_index, bwa_map_and_sort, bam_quality_score_distribution
+from ruffus import *
 
 
 #
 # Prepare directory for every sample and link the input fastq files
 # Expected format:
-#    /path/to/file/[SAMPLE_ID]_S[1-9]\d?_L\d\d\d_R[12]_001.fastq.gz
+#    /path/to/file/[SAMPLE_ID]_R[12].fastq.gz
 # SAMPLE_ID can contain all signs except path delimiter, i.e. "\"
 #
 @jobs_limit(1)    # to avoid problems with simultanous creation of the same sample dir
@@ -136,15 +115,6 @@ def link_fastqs(fastq_in, fastq_out):
 
     
    
-
-@follows(mkdir(os.path.join(cfg.runs_scratch_dir,'qc')), mkdir(os.path.join(cfg.runs_scratch_dir,'qc','read_qc')))
-@transform(link_fastqs, formatter('.+/(?P<SAMPLE_ID>[^/]+)\.fastq\.gz$'), 
-           os.path.join(cfg.runs_scratch_dir,'qc','read_qc/')+'{SAMPLE_ID[0]}_fastqc.html')
-def qc_raw_fastq(input_fastq, report):
-    """ Generate FastQC report for raw FASTQs """
-    produce_fastqc_report(cfg, input_fastq, os.path.dirname(report))
-
- 
 #
 # Input FASTQ filenames are expected to have following format:
 #    [SAMPLE_ID]_[R1|R2].fastq.gz
@@ -175,6 +145,23 @@ def trim_reads(inputs, outputs):
 
 
 
+##################################3
+#
+#   QC reads
+#
+############################
+
+
+@follows(mkdir(os.path.join(cfg.runs_scratch_dir,'qc')), mkdir(os.path.join(cfg.runs_scratch_dir,'qc','read_qc')))
+@transform(link_fastqs, formatter('.+/(?P<SAMPLE_ID>[^/]+)\.fastq\.gz$'), 
+           os.path.join(cfg.runs_scratch_dir,'qc','read_qc/')+'{SAMPLE_ID[0]}_fastqc.html')
+def qc_raw_fastq(input_fastq, report):
+    """ Generate FastQC report for raw FASTQs """
+    produce_fastqc_report(cfg, input_fastq, os.path.dirname(report))
+
+ 
+
+
 @follows(mkdir(os.path.join(cfg.runs_scratch_dir,'qc')), mkdir(os.path.join(cfg.runs_scratch_dir,'qc','read_qc')))
 @transform(trim_reads, formatter('.+/(?P<SAMPLE_ID>[^/]+)\.fq1\.gz$', '.+/(?P<SAMPLE_ID>[^/]+)\.fq2\.gz$'), 
 	  [os.path.join(cfg.runs_scratch_dir,'qc','read_qc')+'/{SAMPLE_ID[0]}.fq1_fastqc.html',
@@ -188,26 +175,11 @@ def qc_trimmed_fastq(input_fastqs, reports):
 
 
 
-
 ###########################
 #
 # Align/map reads and create BAM files (one per sample)
 # 
 #########################
-
-def bwa_map_and_sort(output_bam, ref_genome, fq1, fq2=None, read_group=None, threads=1):
-	
-	bwa_args = "mem -t {threads} {rg} {ref} {fq1} \
-	            ".format(threads=threads, 
-                        rg="-R '%s'" % read_group if read_group!=None else "", 
-                        ref=ref_genome, fq1=fq1)
-	if fq2 != None:
-		bwa_args += fq2
-
-	samtools_args = "sort -o {out}".format(out=output_bam)
-
-	run_piped_command(cfg, cfg.bwa, bwa_args, None,
-	                       cfg.samtools, samtools_args, None)
 
 
 #
@@ -220,7 +192,7 @@ def bwa_map_and_sort(output_bam, ref_genome, fq1, fq2=None, read_group=None, thr
 @jobs_limit(4)
 @transform(trim_reads, formatter("(.+)/(?P<SAMPLE_ID>[^/]+).fq[12]\.gz$"), 
         "{subpath[0][0]}/{SAMPLE_ID[0]}.bam", "{SAMPLE_ID[0]}")
-def align_reads(fastqs, bam, sample_id):  
+def align_trimmed_reads(fastqs, bam, sample_id):  
     sample=sample_id
     read_group = "@RG\\tID:{id}\\tSM:{sm}\\tLB:{lb}\\tPL:{pl}\
                  ".format(id=sample, sm=sample, lb=sample, pl="ILLUMINA")
@@ -230,7 +202,7 @@ def align_reads(fastqs, bam, sample_id):
 @transform(align_reads, suffix(".bam"), '.bam.bai')
 def index(bam, output):
     """Create raw bam index"""
-    index_bam(bam)
+    samtools_index(bam)
 
 
 

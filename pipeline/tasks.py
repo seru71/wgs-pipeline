@@ -4,9 +4,24 @@
 # Functions implementing recurring pipeline tasks
 #
 
-
+#
 # alignment
+#
+def bwa_map_and_sort(output_bam, ref_genome, fq1, fq2=None, read_group=None, threads=1):
+	
+	bwa_args = "mem -t {threads} {rg} {ref} {fq1} \
+	            ".format(threads=threads, 
+                        rg="-R '%s'" % read_group if read_group!=None else "", 
+                        ref=ref_genome, fq1=fq1)
+	if fq2 != None:
+		bwa_args += fq2
 
+	samtools_args = "sort -o {out}".format(out=output_bam)
+
+	run_piped_command(cfg, cfg.bwa, bwa_args, None,
+	                       cfg.samtools, samtools_args, None)
+                           
+                           
 def speedseq_align(output_prefix, read_group, ref_genome, fq1, fq2=None, threads=8):
     args = "align -t {threads} -o {out} -R {rg} {ref} {fq1} {fq2} \
             ".format(out=output_prefix, rg=read_group, 
