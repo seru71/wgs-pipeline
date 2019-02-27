@@ -1,11 +1,15 @@
 
-# TargettedSeq Genotyping Pipeline 
+# Whole-Genome Sequencing Genotyping Pipeline 
 
 
 
 ## Pipeline
 
-The pipeline consists of bcl2fastq, Trimmomatic, BWA, SAMtools, and Freebayes
+The pipeline consists of tools such as:
+ - Trimmomatic 
+ - BWA 
+ - SAMtools 
+ - Freebayes
 
 
 
@@ -23,8 +27,11 @@ The pipeline is ready now, but you will need all of its components to perform th
 
 ### Pipeline components
 
-Install following tools:
-1. bcl2fastq (http://support.illumina.com/downloads/bcl2fastq-conversion-software-v216.html)
+Get a Docker image ....
+
+OR
+
+Install following tools manually:
 2. Trimmomatic (http://www.usadellab.org/cms/?page=trimmomatic)
 3. BWA (http://sourceforge.net/projects/bio-bwa/files)
 4. SAMtools (https://github.com/samtools/samtools)
@@ -41,12 +48,6 @@ https://www.broadinstitute.org/gatk/download
 2. The reference genome will also require creating an index if you are planning to run alignment:
 `bwa index -a bwtsw human_g1k_v37.fasta` 
  
-4. Download/create BED files representing target regions of your targetted capture assay. The pipeline supports two interval files:
-`capture` - used for QC metrics (QualiMap, depth of coverage reports, etc.)
-`capture_plus`   - usually superset of `capture`; used to limit data processing to these regions. No variants outside of these intervals will be reported.
-They can be the exact same file, but sometimes one wants to add flanking sequence to the capture (e.g. +/-10bp) when filtering variants. 
-Both files should be prepared in advance.
-
 
 ## Usage
 
@@ -59,7 +60,7 @@ The NGS pipeline is run using `genotyping_pipeline.py` script:
     which specifies the location of the run folder dumped by Illumina seqeuncer.
     
     Important part of the pipeline is the settings file which contains paths to resources 
-    (e.g. reference genome, database, capture regions), docker settings, 
+    (e.g. adapters, reference genome, annotation databases), docker settings, 
     and docker containers to use. See an exemplary file for all required options 
     in <PIPELINE_HOME>/pipeline_settings.cfg.
     If the settings file is not given as argument (--settings), it is expected in the RUN_FOLDER/settings.cfg
@@ -78,18 +79,18 @@ The NGS pipeline is run using `genotyping_pipeline.py` script:
 
     After finishing, the sample directories will contain:
     	- a BAM file (`SAMPLE_ID.bam`)
-    	- VCF file (`SAMPLE_ID.vcf`) with variants restricted to the `capture_plus` intervals (specified in the settings file)
+    	- VCF file (`SAMPLE_ID.vcf`) with variants 
     	- quality control files (e.g. coverage statistics)
    
     Directly in the RUN_ID directory additional files will be created:
-    	- multisample VCF with snps and indels for all samples (`RUN_ID.multisample.vcf`), limited to `capture_plus` intervals
+    	- multisample VCF with snps and indels for all samples (`RUN_ID.multisample.vcf`)
 
 * Typical usage
 
     For running the genotyping analysis using 12 concurrent tasks:
 
 	genotyping_pipeline.py --run_folder /incoming/RUN_XXXX_YYYY_ZZZZZ \
-						    --settings /my_dir/pipeline_settings/nextera_1.2_settings.cfg \
+						    --settings /my_dir/pipeline_settings/my_settings.cfg \
 							--target complete_run \
 							-vvv -j 12 \
 							--log_file /my_dir/pipeline_run_XXX.log
