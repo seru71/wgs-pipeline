@@ -5,11 +5,11 @@
 #
 
 import os, json
-import StringIO
+import glob
 import sys
 import logging
 import logging.handlers
-
+import StringIO
 
 
 def check_mandatory_options (options, mandatory_options, help_text):
@@ -261,7 +261,7 @@ class PipelineConfig:
         config.read(cfg_file)
         
         
-        self.input_fastqs = glob.glob(config.get('Paths','input-fastqs')
+        self.input_fastqs = glob.glob(config.get('Paths','input-fastqs'))
         
         self.reference_root = config.get('Paths','reference-root')
         
@@ -336,7 +336,7 @@ class PipelineConfig:
         # check task names?
         
         if len(self.input_fastqs) < 2 or \
-            not os.path.exists(self.runs_scratch_dir)
+            not os.path.exists(self.runs_scratch_dir):
             return False
             
         return True

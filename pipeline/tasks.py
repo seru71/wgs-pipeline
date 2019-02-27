@@ -4,6 +4,8 @@
 # Functions implementing recurring pipeline tasks
 #
 
+from utils import run_cmd, run_piped_command
+
 #
 # alignment
 #

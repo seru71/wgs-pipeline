@@ -1,6 +1,6 @@
 
 import os
-from ruffus.drmaa_wrapper import run_job, error_drmaa_job
+#from ruffus.drmaa_wrapper import run_job, error_drmaa_job
 
 """
 cmd is given in a form:

@@ -30,7 +30,7 @@ if __name__ == '__main__':
     
     from ruffus.proxy_logger import *
     from ruffus import *
-    import drmaa
+    #import drmaa
     
     
     import pipeline.config
@@ -59,8 +59,9 @@ if __name__ == '__main__':
                                                         else "settings.cfg")
 
     # init drmaa
-    cfg.drmaa_session = drmaa.Session()
-    cfg.drmaa_session.initialize()
+    #cfg.drmaa_session = drmaa.Session()
+    #cfg.drmaa_session.initialize()
+    cfg.drmaa_session = None
 
 
 
@@ -88,7 +89,7 @@ from ruffus import *
 @jobs_limit(1)    # to avoid problems with simultanous creation of the same sample dir
 @subdivide(cfg.input_fastqs,
            formatter('(?P<PATH>.+)/(?P<SAMPLE_ID>[^/]+)_R[12].fastq\.gz$'), 
-           '{subpath[0][1]}/{SAMPLE_ID[0]}/{basename[0]}{ext[0]}')
+           os.path.join(cfg.runs_scratch_dir, '{SAMPLE_ID[0]}/{basename[0]}{ext[0]}'))
 def link_fastqs(fastq_in, fastq_out):
     """Make working directory for every sample and link fastq files in"""
     if not os.path.exists(os.path.dirname(fastq_out)):
@@ -108,7 +109,7 @@ def qc_raw_fastq(input_fastq, report):
 
 @jobs_limit(4)
 @collate(link_fastqs, 
-        formatter("(.+)/(?P<SAMPLE_ID>[^/]+)_R[12].fastq\.gz$")
+        formatter("(.+)/(?P<SAMPLE_ID>[^/]+)_R[12].fastq\.gz$"),
         ("{subpath[0][0]}/{SAMPLE_ID[0]}.bam", 
          "{subpath[0][0]}/{SAMPLE_ID[0]}.splitters.bam", 
          "{subpath[0][0]}/{SAMPLE_ID[0]}.discordants.bam"
@@ -176,8 +177,8 @@ def cleanup_files():
     pass
 
 
-@posttask(archive_results, cleanup_files)
-@follows(bam_qc, qc_multisample_vcf)
+@posttask(cleanup_files)
+@follows(qc_multisample_vcf)
 def complete_run():
     pass
 
@@ -216,5 +217,5 @@ if __name__ == '__main__':
                             checksum_level  = 0)
     
         
-    cfg.drmaa_session.exit()
+    #cfg.drmaa_session.exit()
     
