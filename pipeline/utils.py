@@ -1,6 +1,9 @@
 
 import os
-#from ruffus.drmaa_wrapper import run_job, error_drmaa_job
+from ruffus.drmaa_wrapper import run_job, error_drmaa_job
+
+from pipeline.config import PipelineConfig
+cfg = PipelineConfig.getInstance()
 
 """
 cmd is given in a form:
@@ -16,7 +19,7 @@ Examples of correct commands:
     cmd = "java {interpreter_args} -jar myjarfile.jar {args} -extras extra_arg
     cmd = "java -XmX4G {interpreter_args} -jar myjarfile.jar {args} -extras extra_arg
 """
-def run_cmd(cfg, cmd, args, interpreter_args=None, run_locally=True,
+def run_cmd(cmd, args, interpreter_args=None, run_locally=True,
             cpus=1, mem_per_cpu=1024, walltime='24:00:00', 
             retain_job_scripts = True, job_script_dir = None):
     
@@ -32,7 +35,7 @@ def run_cmd(cfg, cmd, args, interpreter_args=None, run_locally=True,
                    --mem-per-cpu={mem} \
                    --time={time} \
                   ".format(cpus=cpus, mem=int(1.2*mem_per_cpu), time=walltime)
-    print full_cmd                   
+#    print full_cmd                   
     try:
         stdout, stderr = run_job(full_cmd.strip(), 
                                  job_other_options=job_options,
@@ -48,7 +51,7 @@ def run_cmd(cfg, cmd, args, interpreter_args=None, run_locally=True,
 """ 
 Only default job scheduling params of run_command available when executing via SLURM.
 """
-def run_piped_command(cfg, *args):
+def run_piped_command(*args):
     run_locally=True
     retain_job_scripts = True
     job_script_dir = os.path.join(cfg.runs_scratch_dir, "drmaa")	
@@ -64,7 +67,7 @@ def run_piped_command(cfg, *args):
                   ".format(cpus=cpus, mem=int(1.2*mem_per_cpu), time=walltime)
 	
     full_cmd = "nice " + expand_piped_command(*args)
-    print full_cmd	
+#    print full_cmd	
     try:
         stdout, stderr = run_job(full_cmd.strip(), 
                                  job_other_options=job_options,

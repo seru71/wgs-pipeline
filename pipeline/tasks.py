@@ -5,6 +5,9 @@
 #
 
 from utils import run_cmd, run_piped_command
+from pipeline.config import PipelineConfig
+
+cfg = PipelineConfig.getInstance()
 
 #
 # alignment
@@ -20,24 +23,24 @@ def bwa_map_and_sort(output_bam, ref_genome, fq1, fq2=None, read_group=None, thr
 
 	samtools_args = "sort -o {out}".format(out=output_bam)
 
-	run_piped_command(cfg, cfg.bwa, bwa_args, None,
-	                       cfg.samtools, samtools_args, None)
+	run_piped_command(cfg.bwa, bwa_args, None,
+	                  cfg.samtools, samtools_args, None)
                            
                            
 def speedseq_align(output_prefix, read_group, ref_genome, fq1, fq2=None, threads=8):
-    args = "align -t {threads} -o {out} -R {rg} {ref} {fq1} {fq2} \
+    args = "align -t {threads} -o {out} -R '{rg}' {ref} {fq1} {fq2} \
             ".format(out=output_prefix, rg=read_group, 
                      ref=ref_genome, fq1=fq1, 
                      fq2="" if fq2 is None else fq2,
                      threads = threads)
-        
-    run_cmd(cfg, cfg.speedseq, args, None)
+    
+    run_cmd(cfg.speedseq, args, None)
 
 
 
 def samtools_index(bam):
     """Use samtools to create an index for the bam file"""
-    run_cmd(cfg, cfg.samtools, "index %s" % bam)
+    run_cmd(PipelineConfig.getInstance().samtools, "index %s" % bam)
 
 #
 # Calling
@@ -53,7 +56,7 @@ def speedseq_var(output_prefix, ref_genome, bams, include_bed=None, threads=16):
     for bam in bams:
         args += " "+bam
     
-    run_cmd(cfg, cfg.speedseq, args, None)
+    run_cmd(PipelineConfig.getInstance().speedseq, args, None)
     
 
 def speedseq_sv(output_prefix, ref_genome, 
@@ -75,22 +78,22 @@ def speedseq_sv(output_prefix, ref_genome,
                     bams = bams, splitters = splitters, discordants = discordants,
                     threads = threads)
                         
-    run_cmd(cfg, cfg.speedseq, args, None)
+    run_cmd(cfg.speedseq, args, None)
 
 
 #
 # QC
 #
 
-def produce_fastqc_report(cfg, fastq_file, output_dir=None):
+def produce_fastqc_report(fastq_file, output_dir=None):
     args = fastq_file
     args += (' -o '+output_dir) if output_dir != None else ''
-    run_cmd(cfg, cfg.fastqc, args)
+    run_cmd(cfg.fastqc, args)
 
                                                       
 def bam_quality_score_distribution(bam,qs,pdf):
     """Calculates quality score distribution histograms"""
-    run_cmd(cfg, cfg.picard, "QualityScoreDistribution \
+    run_cmd(cfg.picard, "QualityScoreDistribution \
                     CHART_OUTPUT={chart} \
                     OUTPUT={out} \
                     INPUT={bam} \

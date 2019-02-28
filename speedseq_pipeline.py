@@ -52,7 +52,8 @@ if __name__ == '__main__':
 
 
     # Get pipeline settings from a config file  
-    cfg = pipeline.config.PipelineConfig() 
+    from pipeline.config import PipelineConfig
+    cfg = PipelineConfig.getInstance() 
     cfg.set_logger(logger)
     cfg.set_num_jobs(options.jobs)
     cfg.load_settings_from_file(options.pipeline_settings if options.pipeline_settings != None 
@@ -61,7 +62,6 @@ if __name__ == '__main__':
     # init drmaa
     #cfg.drmaa_session = drmaa.Session()
     #cfg.drmaa_session.initialize()
-    cfg.drmaa_session = None
 
 
 
@@ -77,7 +77,6 @@ from pipeline.utils import run_cmd, run_piped_command
 from pipeline.tasks import produce_fastqc_report, speedseq_align, speedseq_var, speedseq_sv
 
 from ruffus import *
-
 
 
 #
@@ -103,11 +102,11 @@ def link_fastqs(fastq_in, fastq_out):
            os.path.join(cfg.runs_scratch_dir,'qc','read_qc/')+'{SAMPLE_ID[0]}_fastqc.html')
 def qc_raw_fastq(input_fastq, report):
     """ Generate FastQC report for raw FASTQs """
-    produce_fastqc_report(cfg, input_fastq, os.path.dirname(report))
+    produce_fastqc_report(input_fastq, os.path.dirname(report))
 
  
 
-@jobs_limit(4)
+@jobs_limit(3)
 @collate(link_fastqs, 
         formatter("(.+)/(?P<SAMPLE_ID>[^/]+)_R[12].fastq\.gz$"),
         ("{subpath[0][0]}/{SAMPLE_ID[0]}.bam", 
@@ -160,7 +159,7 @@ def qc_multisample_vcf(vcf, output):
                      vcf=vcf,
                      out=output)
     
-    run_cmd(cfg, cfg.bcftools, args)
+    run_cmd(cfg.bcftools, args)
     
 
 

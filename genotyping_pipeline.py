@@ -52,15 +52,16 @@ if __name__ == '__main__':
 
 
     # Get pipeline settings from a config file  
-    cfg = pipeline.config.PipelineConfig() 
+    from pipeline.config import PipelineConfig
+    cfg = PipelineConfig.getInstance()     
     cfg.set_logger(logger)
     cfg.set_num_jobs(options.jobs)
     cfg.load_settings_from_file(options.pipeline_settings if options.pipeline_settings != None 
                                                         else "settings.cfg")
 
     # init drmaa
-    cfg.drmaa_session = drmaa.Session()
-    cfg.drmaa_session.initialize()
+    #cfg.drmaa_session = drmaa.Session()
+    #cfg.drmaa_session.initialize()
 
 
 
@@ -139,7 +140,7 @@ def trim_reads(inputs, outputs):
                               unpaired1=unpaired[0], unpaired2=unpaired[1],
                               adapter=cfg.adapters)
     max_mem = 2048
-    run_cmd(cfg, cfg.trimmomatic, args, interpreter_args="-Xmx"+str(max_mem)+"m", cpus=1, mem_per_cpu=max_mem)
+    run_cmd(cfg.trimmomatic, args, interpreter_args="-Xmx"+str(max_mem)+"m", cpus=1, mem_per_cpu=max_mem)
 
 
 
@@ -157,7 +158,7 @@ def trim_reads(inputs, outputs):
            os.path.join(cfg.runs_scratch_dir,'qc','read_qc/')+'{SAMPLE_ID[0]}_fastqc.html')
 def qc_raw_fastq(input_fastq, report):
     """ Generate FastQC report for raw FASTQs """
-    produce_fastqc_report(cfg, input_fastq, os.path.dirname(report))
+    produce_fastqc_report(input_fastq, os.path.dirname(report))
 
  
 
@@ -168,8 +169,8 @@ def qc_raw_fastq(input_fastq, report):
            os.path.join(cfg.runs_scratch_dir,'qc','read_qc')+'/{SAMPLE_ID[1]}.fq2_fastqc.html'])
 def qc_trimmed_fastq(input_fastqs, reports):
     """ Generate FastQC report for trimmed FASTQs """
-    produce_fastqc_report(cfg, input_fastqs[0], os.path.dirname(reports[0]))
-    produce_fastqc_report(cfg, input_fastqs[1], os.path.dirname(reports[1]))
+    produce_fastqc_report(input_fastqs[0], os.path.dirname(reports[0]))
+    produce_fastqc_report(input_fastqs[1], os.path.dirname(reports[1]))
 
 
 
@@ -226,7 +227,7 @@ def index(bam, output):
 @transform(align_reads, suffix(".bam"), '.bam.alignment_metrics')
 def qc_bam_alignment_metrics(input_bam, output):
     """Collects alignment metrics for a bam file"""
-    run_cmd(cfg, cfg.picard, "CollectAlignmentSummaryMetrics \
+    run_cmd(cfg.picard, "CollectAlignmentSummaryMetrics \
                     REFERENCE_SEQUENCE={ref} \
                     OUTPUT={out} \
                     INPUT={bam} \
@@ -271,7 +272,7 @@ def qc_aggregate_alignment_metrics(inputs,output):
 @transform(align_reads, suffix(".bam"), '.target_coverage.sample_summary', r'\1.target_coverage')
 def qc_bam_target_coverage_metrics(input_bam, output, output_format):
     """ Calculate coverage on target """
-    run_cmd(cfg, cfg.gatk, "-R {reference} \
+    run_cmd(cfg.gatk, "-R {reference} \
                     -T DepthOfCoverage \
                     -o {output} \
                     -I {input} \
@@ -294,7 +295,7 @@ def qc_bam_gene_coverage_metrics_multisample(input_bams, output):
         for bam_path in input_bams:
             f.write(bam_path+'\n')
         
-    run_cmd(cfg, cfg.gatk, "-R {reference} \
+    run_cmd(cfg.gatk, "-R {reference} \
                     -T DepthOfCoverage \
                     -o {output} \
                     -I {inputs} \
@@ -316,7 +317,7 @@ def qc_bam_gene_coverage_metrics_multisample(input_bams, output):
 @transform(align_reads, suffix('.bam'), '.gene_coverage.sample_gene_summary', r'\1.gene_coverage')
 def qc_bam_gene_coverage_metrics_singlesample(input_bam, _, output_prefix):
     """Calculates and outputs bam coverage statistics """      
-    run_cmd(cfg, cfg.gatk, "-R {reference} \
+    run_cmd(cfg.gatk, "-R {reference} \
                     -T DepthOfCoverage \
                     -o {output} \
                     -I {bam} \
@@ -380,7 +381,7 @@ def qc_bam_aggregate_gene_coverage_metrics(gene_cov_files, output):
 def qc_bam_qualimap_report(input_bam, output_dir):
     """ Generates Qualimap bam QC report """
     if not os.path.exists(output_dir): os.mkdir(output_dir)
-    run_cmd(cfg, cfg.qualimap, "bamqc -bam {bam} \
+    run_cmd(cfg.qualimap, "bamqc -bam {bam} \
                         -c -outformat PDF \
                         -gff {target} \
                         -gd HUMAN -os \
@@ -427,7 +428,7 @@ def mark_dups(bam, output):
             ".format(tmp=cfg.tmp_dir, 
                      bam=bam, 
                      out=output)
-    run_cmd(cfg, cfg.picard, args, interpreter_args="-Xmx2g", mem_per_cpu=4096)
+    run_cmd(cfg.picard, args, interpreter_args="-Xmx2g", mem_per_cpu=4096)
 
 
 #####################
@@ -459,7 +460,7 @@ def call_variants_freebayes(bams_list, vcf, ref_genome, targets, bam_list_filena
                            min_alt_dp = 4,
                            mq         = 30)           
 
-    run_cmd(cfg, cfg.freebayes, args, cpus=threads, mem_per_cpu=int(mem/threads))
+    run_cmd(cfg.freebayes, args, cpus=threads, mem_per_cpu=int(mem/threads))
     
     os.remove(bam_list_filename)
 
@@ -492,7 +493,7 @@ def call_haplotypes(bam, output_gvcf):
                      target=cfg.capture_plus,
                      pcr='NONE')
 
-    run_cmd(cfg, cfg.gatk, args, '-Djava.io.tmpdir=%s -Xmx4g' % cfg.tmp_dir)
+    run_cmd(cfg.gatk, args, '-Djava.io.tmpdir=%s -Xmx4g' % cfg.tmp_dir)
 
 
 @merge(call_haplotypes, os.path.join(cfg.runs_scratch_dir, 'multisample.gatk.vcf'))
@@ -508,7 +509,7 @@ def genotype_gvcfs(gvcfs, output):
     for gvcf in gvcfs:
         args += " --variant %s" % gvcf
     
-    run_cmd(cfg, cfg.gatk, args, '-Xmx16g')
+    run_cmd(cfg.gatk, args, '-Xmx16g')
 
 
 
@@ -549,7 +550,7 @@ def split_snps(bam, vcf, multisample_vcf):
 #                     dp_thr=DP_threshold)
 # -select 'vc.getGenotype(\\\"{sample}\\\").getAD().1 >= {ad_thr} && vc.getGenotype(\\\"{sample}\\\").getDP() >= {dp_thr}' \            
 
-    run_cmd(cfg, cfg.gatk, args, interpreter_args="-Djava.io.tmpdir=%s -Xmx2g" % cfg.tmp_dir, mem_per_cpu=2048)
+    run_cmd(cfg.gatk, args, interpreter_args="-Djava.io.tmpdir=%s -Xmx2g" % cfg.tmp_dir, mem_per_cpu=2048)
 
 
 
@@ -569,7 +570,7 @@ def qc_multisample_vcf(vcf, output):
                      vcf=vcf,
                      out=output)
     
-    run_cmd(cfg, cfg.bcftools, args)
+    run_cmd(cfg.bcftools, args)
     
 
 
@@ -589,7 +590,7 @@ def prepare_annovar_inputs(vcf, output):
     """ convert to annovar format """
     args = "{vcf} -format vcf4 -withzyg -includeinfo -outfile {out} \
         ".format(vcf=vcf, out=output)
-    run_cmd(cfg, cfg.convert_to_annovar, args)
+    run_cmd(cfg.convert_to_annovar, args)
     
    
 @transform(prepare_annovar_inputs, suffix('.avinput'), 
@@ -605,7 +606,7 @@ def filter_common_1000genomes(avinput, outputs):
                     input_file=avinput, 
                     annodb=cfg.annovar_human_db)
     
-    run_cmd(cfg, cfg.annovar_annotate, args)
+    run_cmd(cfg.annovar_annotate, args)
 
 
 #
@@ -618,7 +619,7 @@ def filter_common_1000genomes(avinput, outputs):
 def filter_common_inhouse(inputs, outputs):
     """ filter variants found in the inhouse databases """
     filtered = inputs[0]              # use only the filtered input file, leave dropped
-    annotation.filter_common_inhouse(cfg, filtered, outputs)
+    annotation.filter_common_inhouse(filtered, outputs)
 
 
 
@@ -641,7 +642,7 @@ def filter_common_inhouse(inputs, outputs):
 def annotate_function_of_rare_variants(inputs, outputs):
     """ annotate functional change in rare variants """
     filtered = inputs[0]              # use only the filtered input file, leave dropped
-    annotation.get_stats_on_prefiltered_variants(cfg, input_file=filtered, outputs=outputs[2:4], cleanup=False)
+    annotation.get_stats_on_prefiltered_variants(input_file=filtered, outputs=outputs[2:4], cleanup=False)
 
 
 # with common_inhouse:      formatter(".*/(?P<SAMPLE_ID>[^/]+).avinput.hg19_EUR.sites.2015_08_filtered.common_inhouse_filtered.variant_function", None, None, None),
@@ -651,13 +652,13 @@ def annotate_function_of_rare_variants(inputs, outputs):
             '{subpath[0][1]}/{SAMPLE_ID[0]}/{SAMPLE_ID[0]}.rare_coding_and_splicing.multianno.csv'])
 def produce_variant_annotation_table(inputs, outputs):
     """ produce a table of various annotations per variant """
-    annotation.produce_variant_annotation_table(cfg, inputs[0], inputs[1], outputs[0], outputs[1])
+    annotation.produce_variant_annotation_table(inputs[0], inputs[1], outputs[0], outputs[1])
 
 #'{path[1]}/{basename[1]}.with_omim.csv'
 @transform(produce_variant_annotation_table, suffix('.csv'), '.with_omim.tsv')
 def include_omim_phenotype_annotation(inputs, output_table):
     """ add OMIM annotation to the table """
-    annotation.include_omim_phenotype_annotation(cfg, inputs[1], output_table)
+    annotation.include_omim_phenotype_annotation(inputs[1], output_table)
  
 
 @transform(include_omim_phenotype_annotation, suffix('.tsv'), '.recessive.tsv')
@@ -682,7 +683,7 @@ def count_hetz_and_homz_per_chr(inputs, tables):
 @transform(prepare_annovar_inputs, suffix('.avinput'), ['.avinput.variant_function.stats','.avinput.exonic_variant_function.stats'])
 def get_stats_on_raw_variants(input_file, outputs):
     """ annotate functional change in raw variants, get stats, and remove annotated files """
-    annotation.get_stats_on_prefiltered_variants(cfg, input_file, outputs, cleanup=True)
+    annotation.get_stats_on_prefiltered_variants(input_file, outputs, cleanup=True)
 
 
 @transform(filter_common_1000genomes, suffix('.hg19_EUR.sites.2015_08_filtered'), 
@@ -690,7 +691,7 @@ def get_stats_on_raw_variants(input_file, outputs):
                                          '.hg19_EUR.sites.2015_08_filtered.exonic_variant_function.stats'])
 def get_stats_on_1kg_filtered_variants(inputs, outputs):
     """ annotate functional change in 1kg filtered variants, get stats, and remove annotated files """
-    annotation.get_stats_on_prefiltered_variants(cfg, inputs[0], outputs, cleanup=True)
+    annotation.get_stats_on_prefiltered_variants(inputs[0], outputs, cleanup=True)
 
 # equivalent of annotate_rare_variants (input and output files are the same)
 @transform(filter_common_inhouse, suffix('.common_inhouse_filtered'), 
@@ -698,7 +699,7 @@ def get_stats_on_1kg_filtered_variants(inputs, outputs):
                                          '.common_inhouse_filtered.exonic_variant_function.stats'])
 def get_stats_on_inhouse_filtered_variants(inputs, outputs):
     """ annotate functional change in inhouse-exomes filtered variants, get stats, and remove annotated files """
-    annotation.get_stats_on_prefiltered_variants(cfg, inputs[0], outputs, cleanup=True)
+    annotation.get_stats_on_prefiltered_variants(inputs[0], outputs, cleanup=True)
 
 
 #@merge([get_stats_on_raw_variants,
@@ -722,7 +723,7 @@ def produce_variant_stats_table(infiles, table_file):
 
 
 def cleanup_files():
-    run_cmd(cfg, "rm -rf {dir}/*/*.recal_data.csv {dir}/*/*.realign* {dir}/*/*.dedup* \
+    run_cmd("rm -rf {dir}/*/*.recal_data.csv {dir}/*/*.realign* {dir}/*/*.dedup* \
             {dir}/*.multisample.indel.model* {dir}/*.multisample.snp.model* \
             {dir}/*/*.log {dir}/*.multisample.recalibratedSNPS.rawIndels.vcf* \
             {dir}/*.multisample.recalibrated.vcf* \
@@ -769,5 +770,5 @@ if __name__ == '__main__':
                             checksum_level  = 0)
     
         
-    cfg.drmaa_session.exit()
+    #cfg.drmaa_session.exit()
     

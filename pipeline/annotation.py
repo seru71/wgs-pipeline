@@ -1,8 +1,9 @@
 import os
-from utils import run_cmd
+from utils import get_cfg, run_cmd
 
+cfg = config.PipelineConfig.getInstance()
 
-def filter_common_inhouse(cfg, input_variants, outputs):
+def filter_common_inhouse(input_variants, outputs):
 
     inhouse_dbs = cfg.annovar_inhouse_dbs.split(';')
 
@@ -32,7 +33,7 @@ def filter_common_inhouse(cfg, input_variants, outputs):
     # delete the temp file
     os.remove(filtered)
 
-def get_stats_on_prefiltered_variants(cfg, input_file, outputs, cleanup=True):    
+def get_stats_on_prefiltered_variants(input_file, outputs, cleanup=True):    
 
     args = "-buildver hg19 -outfile {outfile_prefix} {input_file} {annodb}".format(
         tool=cfg.annovar_annotate,
@@ -40,20 +41,20 @@ def get_stats_on_prefiltered_variants(cfg, input_file, outputs, cleanup=True):
         input_file=input_file, 
         annodb=cfg.annovar_human_db)
         
-    run_cmd(cfg, cfg.annovar_annotate, args)
+    run_cmd(cfg.annovar_annotate, args)
 
     # calculate stats on files created by annovar - output files without ".stats" suffix
-    run_cmd(cfg, "cut -f 1 {f} | sort | uniq -c > {f}.stats".format(f=outputs[0][:-len('.stats')]), "")
-    run_cmd(cfg, "cut -f 2 {f} | sort | uniq -c > {f}.stats".format(f=outputs[1][:-len('.stats')]), "")
+    run_cmd("cut -f 1 {f} | sort | uniq -c > {f}.stats".format(f=outputs[0][:-len('.stats')]), "")
+    run_cmd("cut -f 2 {f} | sort | uniq -c > {f}.stats".format(f=outputs[1][:-len('.stats')]), "")
     # remove the annovar files
     if cleanup:
         os.remove(outputs[0][:-len('.stats')])
         os.remove(outputs[1][:-len('.stats')])
 
 
-def produce_variant_annotation_table(cfg, variants_file, exonic_variants_file, 
+def produce_variant_annotation_table(variants_file, exonic_variants_file, 
                                     coding_and_splicing_output_file, annotation_table_file):
-      
+          
     # create input file for the table_annotation script
     f_out = open(coding_and_splicing_output_file,'w')
     f = open(exonic_variants_file)
@@ -79,7 +80,7 @@ def produce_variant_annotation_table(cfg, variants_file, exonic_variants_file,
             avinput=coding_and_splicing_output_file, 
             db=cfg.annovar_human_db)
     
-    run_cmd(cfg, cfg.table_annovar, args)
+    run_cmd(cfg.table_annovar, args)
     
     # rename annovar output table
     os.rename(coding_and_splicing_output_file+".hg19_multianno.csv", annotation_table_file)
@@ -150,7 +151,7 @@ def parenthesis_aware_split(string, delim=',', open_par='(', close_par=')'):
     return out + [s]
 
 
-def include_omim_phenotype_annotation(cfg, input_table, output_table, gene_column=7, omim_column=15, delim=','):
+def include_omim_phenotype_annotation(input_table, output_table, gene_column=7, omim_column=15, delim=','):
     
     if cfg.omim_gene_phenotype_map == None:
         cfg.omim_gene_phenotype_map = _get_omim_gene_phenotype_map(cfg.omim_gene_phenotype_map_file)

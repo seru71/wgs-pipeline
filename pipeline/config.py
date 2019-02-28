@@ -161,30 +161,25 @@ def setup_logging(log_file, verbosity):
 
 
 
-class PipelineConfig:
-
-
-    # Attributes:
-    #
-    #  - reference_root
-    #  - scratch_root
-    #  - results_archive
-    #  - tmp_dir
+class PipelineConfig:    
     
-
-
-    # Tool paths
-    # - docker_bin
+    instance = None
     
+    @staticmethod
+    def getInstance():
+        if PipelineConfig.instance == None:
+            PipelineConfig.instance = PipelineConfig()
+        return PipelineConfig.instance
+
 
     def __init__(self):
         
+        self.instance = None
+        
         self.drmaa_session = None
-        
-        self.dockerize = True
-        
         self.logger = None
         
+        # tool paths
         self.speedseq    = None
         self.trimmomatic = None
         self.fastqc      = None
@@ -207,8 +202,7 @@ class PipelineConfig:
         self.omim_gene_phenotype_map            = None
 
 
-
-        # run settings
+        # run paths
         self.reference_root = None
         self.scratch_root = None
         self.input_fastqs = None
@@ -218,6 +212,7 @@ class PipelineConfig:
         self.adapters  = None
         self.reference = None
 
+        # ruffus settings
         self.target_tasks    = []
         self.log_file        = None
         self.num_jobs        = 1
