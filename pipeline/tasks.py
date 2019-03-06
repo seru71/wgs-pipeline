@@ -28,7 +28,7 @@ def bwa_map_and_sort(output_bam, ref_genome, fq1, fq2=None, read_group=None, thr
                            
                            
 def speedseq_align(output_prefix, read_group, ref_genome, fq1, fq2=None, threads=8):
-    args = "align -t {threads} -o {out} -R '{rg}' {ref} {fq1} {fq2} \
+    args = "align -t {threads} -o {out} -T {out}.tmp -R '{rg}' {ref} {fq1} {fq2} \
             ".format(out=output_prefix, rg=read_group, 
                      ref=ref_genome, fq1=fq1, 
                      fq2="" if fq2 is None else fq2,
@@ -46,9 +46,10 @@ def samtools_index(bam):
 # Calling
 #
 
-def speedseq_var(output_prefix, ref_genome, bams, include_bed=None, threads=16):
-    args = "var -o {out} {bed} -t {threads} {ref}\
+def speedseq_var(output_prefix, ref_genome, bams, include_bed=None, annotate=False, threads=16):
+    args = "var -o {out} -T {out}.tmp {bed} {annotate} -t {threads} {ref}\
            ".format(out=output_prefix, 
+                    annotate="-A " if annotate else "",
                     bed = "" if include_bed is None else "-w "+include_bed,
                     threads = threads,
                     ref = ref_genome)

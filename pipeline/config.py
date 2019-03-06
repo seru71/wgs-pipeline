@@ -160,6 +160,7 @@ def setup_logging(log_file, verbosity):
     return logger
 
 
+import ConfigParser
 
 class PipelineConfig:    
     
@@ -211,6 +212,8 @@ class PipelineConfig:
 
         self.adapters  = None
         self.reference = None
+        self.speedseq_include_bed = None
+        self.speedseq_lumpy_exclude_bed = None
 
         # ruffus settings
         self.target_tasks    = []
@@ -234,6 +237,16 @@ class PipelineConfig:
         self.input_fastqs = fastqs
     
     
+    # helper method
+    def _get_optional_param(self, cfg, section, param, default_value=None, log_msg=None):
+        try:
+            return cfg.get(section, param)
+        except ConfigParser.NoOptionError:
+            if log_msg: self.logger.info(log_msg)
+            return default_value
+
+     
+    
     def load_settings_from_file(self, cfg_file):
         
         #
@@ -251,7 +264,6 @@ class PipelineConfig:
         if not os.path.exists(cfg_file): 
             raise Exception('Provided config file [%s] does not exist or cannot be read.' % cfg_file)
 
-        import ConfigParser
         config = ConfigParser.ConfigParser()
         config.read(cfg_file)
         
@@ -282,9 +294,15 @@ class PipelineConfig:
                     
             
         # reference files
-        self.reference = os.path.join(self.reference_root, config.get('Resources','reference-genome'))
+        self.reference        = os.path.join(self.reference_root, config.get('Resources', 'reference-genome'))
         self.gene_coordinates = os.path.join(self.reference_root, config.get('Resources', 'gene-coordinates'))       
-        self.adapters = os.path.join(self.reference_root, config.get('Resources', 'adapters-fasta'))
+        self.adapters         = os.path.join(self.reference_root, config.get('Resources', 'adapters-fasta'))
+        
+        self.speedseq_include_bed, self.speedseq_lumpy_exclude_bed = \
+            [os.path.join(self.reference_root, self._get_optional_param(config, 'Resources', val, 'Speedseq\'s BED not set: '+val)) \
+             for val in ['speedseq-include-bed', 'speedseq-lumpy-exclude-bed'] ]
+        
+        
         
         # tools
         self.speedseq    = config.get('Tools','speedseq')

@@ -139,7 +139,7 @@ def call_svs(bams, vcf):
     
     speedseq_sv(out_prefix, cfg.reference, 
                 concordant_bams, splitters_bams, discordant_bams,
-                exclude_bed=cfg.speedseq_exclude_bed, threads=16)
+                exclude_bed=cfg.speedseq_lumpy_exclude_bed, threads=16)
 
 
 
