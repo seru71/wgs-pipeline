@@ -105,8 +105,9 @@ def qc_raw_fastq(input_fastq, report):
     produce_fastqc_report(input_fastq, os.path.dirname(report))
 
  
+MAPPING_JOB_LIMIT=3
 
-@jobs_limit(3)
+@jobs_limit(MAPPING_JOB_LIMIT)
 @collate(link_fastqs, 
         formatter("(.+)/(?P<SAMPLE_ID>[^/]+)_R[12].fastq\.gz$"),
         ("{subpath[0][0]}/{SAMPLE_ID[0]}.bam", 
@@ -119,7 +120,7 @@ def align_reads(fastqs, bams, sample_id):
     read_group = "@RG\\tID:{id}\\tSM:{sm}\\tLB:{lb}\\tPL:{pl}\
                  ".format(id=sample_id, sm=sample_id, lb=sample_id, pl="ILLUMINA")
     bam_prefix = bams[0][:-len('.bam')]
-    speedseq_align(bam_prefix, read_group, cfg.reference, fastqs[0], fastqs[1])
+    speedseq_align(bam_prefix, read_group, cfg.reference, fastqs[0], fastqs[1], threads=int(cfg.num_jobs/MAPPING_JOB_LIMIT))
 
 
 @merge(align_reads, os.path.join(cfg.runs_scratch_dir, 'multisample.vcf.gz'))
@@ -127,7 +128,7 @@ def call_variants(bams, vcf):
     out_prefix = vcf[:-len(".vcf.gz")]
     concordant_bams = [bam for (bam, _, _) in bams]
     speedseq_var(out_prefix, cfg.reference, concordant_bams, 
-                 cfg.speedseq_include_bed, threads=16)
+                 cfg.speedseq_include_bed, threads=cfg.num_jobs)
 
 
 @merge(align_reads, os.path.join(cfg.runs_scratch_dir, 'multisample.sv.vcf.gz'))
@@ -139,7 +140,7 @@ def call_svs(bams, vcf):
     
     speedseq_sv(out_prefix, cfg.reference, 
                 concordant_bams, splitters_bams, discordant_bams,
-                exclude_bed=cfg.speedseq_lumpy_exclude_bed, threads=16)
+                exclude_bed=cfg.speedseq_lumpy_exclude_bed, threads=cfg.num_jobs)
 
 
 

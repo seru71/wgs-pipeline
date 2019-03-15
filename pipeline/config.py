@@ -272,11 +272,8 @@ class PipelineConfig:
         
         self.reference_root = config.get('Paths','reference-root')
         
-        self.scratch_root = os.getcwd()
-        try:
-            self.scratch_root   = config.get('Paths','scratch-root')
-        except ConfigParser.NoOptionError:
-            self.logger.info('Scratch-root setting is missing. Using current directory: %s' % self.scratch_root)
+        self.scratch_root = self._get_optional_param(config, 'Paths','scratch-root', \
+                            os.getcwd(), 'Scratch-root setting is missing. Using current directory: %s' % os.getcwd())
                   
     
         # workdir
@@ -285,23 +282,19 @@ class PipelineConfig:
                   
                           
         # optional /tmp dir
-        self.tmp_dir = '/tmp'
-        try:
-            self.tmp_dir = config.get('Paths','tmp-dir')
-        except ConfigParser.NoOptionError:
-            self.logger.info('No tmp-dir provided. /tmp will be used.')
-  
-                    
-            
+        self.tmp_dir = self._get_optional_param(config, 'Paths','tmp-dir', \
+                                                '/tmp', 'No tmp-dir provided. /tmp will be used.')
+        
         # reference files
         self.reference        = os.path.join(self.reference_root, config.get('Resources', 'reference-genome'))
         self.gene_coordinates = os.path.join(self.reference_root, config.get('Resources', 'gene-coordinates'))       
         self.adapters         = os.path.join(self.reference_root, config.get('Resources', 'adapters-fasta'))
         
+        # optional speedseq BED annotations
+        beds = [self._get_optional_param(config, 'Resources', val, log_msg='Speedseq\'s BED not set: '+val) \
+                 for val in ['speedseq-include-bed', 'speedseq-lumpy-exclude-bed'] ]
         self.speedseq_include_bed, self.speedseq_lumpy_exclude_bed = \
-            [os.path.join(self.reference_root, self._get_optional_param(config, 'Resources', val, 'Speedseq\'s BED not set: '+val)) \
-             for val in ['speedseq-include-bed', 'speedseq-lumpy-exclude-bed'] ]
-        
+            [ os.path.join(self.reference_root, filename) if filename else None for filename in beds ]
         
         
         # tools
