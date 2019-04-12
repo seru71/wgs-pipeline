@@ -42,12 +42,28 @@ def samtools_index(bam):
     """Use samtools to create an index for the bam file"""
     run_cmd(PipelineConfig.getInstance().samtools, "index %s" % bam)
 
+
+
+def recalibrateBQ(bam, metrics_table):
+    """ GATK BQSR """
+    run_cmd(cfg.gatk, "BaseRecalibrator \
+                        -I {bam} \
+                        -R {ref} \
+                        --known-sites {sites} \
+                        -O {table} \
+                        ".format(bam=bam, 
+                                ref=cfg.ref_genome,
+                                sites=cfg.dbsnp_vcf,
+                                table=metrics_table))
+                                
+
+
 #
 # Calling
 #
 
 def speedseq_var(output_prefix, ref_genome, bams, include_bed=None, annotate=False, threads=16):
-    args = "var -o {out} -T {out}.tmp {bed} {annotate} -t {threads} {ref}\
+    args = "var -k -o {out} -T {out}.tmp {bed} {annotate} -t {threads} {ref}\
            ".format(out=output_prefix, 
                     annotate="-A " if annotate else "",
                     bed = "" if include_bed is None else "-w "+include_bed,
@@ -58,11 +74,11 @@ def speedseq_var(output_prefix, ref_genome, bams, include_bed=None, annotate=Fal
         args += " "+bam
     
     run_cmd(PipelineConfig.getInstance().speedseq, args, None)
-    
+
 
 def speedseq_sv(output_prefix, ref_genome, 
                 concordant_bams, splitters_bams, discordant_bams, 
-                exclude_bed=None, genotype=True, annotate=True, 
+                exclude_bed=None, genotype=True, annotate=False, 
                 threads=16):
     
     bams = ','.join(concordant_bams)
@@ -76,10 +92,79 @@ def speedseq_sv(output_prefix, ref_genome,
                     exclude = "" if exclude_bed is None else "-x "+exclude_bed,
                     genotype="-g " if genotype else "",
                     annotate="-A " if annotate else "",
-                    bams = bams, splitters = splitters, discordants = discordants,
+                    bams = bams, splitters = splitters, discords = discordants,
                     threads = threads)
                         
-    run_cmd(cfg.speedseq, args, None)
+    run_cmdPipelineConfig.getInstance().speedseq, args, None)
+
+
+
+
+def cnvnator_sv(bam, calls, genome_dir, bin_size=100, 
+                chromosomes="chr1 chr2 chr3 chr4 chr5 chr6 chr7 chr8 chr9 \
+                             chr10 chr11 chr12 chr13 chr14 chr15 chr16 \
+                            chr17 chr18 chr19 chr20 chr21 chr22 chrX chrY"):
+    
+    ''' executes 5-step cnvnator calling process. Expects that thisroot.sh is sourced in advance '''
+    
+    #source /tools/root_v6.16.00/bin/thisroot.sh
+
+    rootfile = bam+'.cnvnator.root'
+    errfile  = rootfile+'.err'
+    bs = str(bin_size)
+    
+    args1="-root {rf} -tree {bam} -unique -lite -chrom {chrom} \
+          >> ${err} 2>&1".format(rf=rootfile, bam=bam, 
+                                 chrom=chromosomes, err=errfile)
+                                      
+    args2="-root {rf} -his {binsize} -d {genome_dir} >> ${err} 2>&1\
+          ".format(rf=rootfile, binsize=bs, 
+                   genome_dir=genome_dir, err=errfile)
+
+    args3="-root {rf} -stat {binsize} >> ${err} 2>&1\
+          ".format(rf=rootfile, binsize=bs, err=errfile)
+          
+    args4="-root {rf} -partition {binsize} >> ${err} 2>&1\
+          ".format(rf=rootfile, binsize=bs, err=errfile)
+
+    args5="-root {rf} -call {binsize} > {calls} 2>>${err}\
+          ".format(rf=rootfile, binsize=bs, calls=calls, err=errfile)
+
+    args = [ args1, args2, args3, args4, args5 ]
+    for arg in args:
+        run_cmd(PipelineConfig.getInstance().cnvnator, a, None)
+
+    # cleanup
+    os.path.remove(rootfile)
+
+
+def cnvnator_calls2bed(calls, bed, bam=None):
+    ''' reformats cnvnator calls file to a BED including a column with mean MQ '''
+
+    if bam: # calculating mean MQ for regions
+        
+        cmd = "for reg in `cut -f2 {calls}`; do "+
+                 "samtools view {bam} $reg | awk '{sum+=$5}END{if (NR==0) {print \"NA\"} else {print sum/NR}}'; "+
+              "done > {calls}.mqs 2>/dev/null".format(bam=bam, calls=calls)
+        run_cmd(cmd,args)
+    
+    with open(calls, 'r') as calls_file, 
+         open(bed, 'w') as bed:
+         
+        mqs = open(calls+'.mqs', 'r') if bam else None
+        for l in calls_file:
+             ls = l.strip().split('\t')
+             
+             c,s,e = ls[1].replace(':','\t').replace('-','\t').split('\t')
+             cnvtype = ls[0].replace("deletion","DEL").replace("duplication","DUP")
+             
+             bed.write('\t'.join(c, s, e, ls[2:3], cnvtype, ls[4:10], 
+                                 mqs.readline() if mqs else "\n"))
+        
+        close(mqs)
+            
+
+
 
 
 #

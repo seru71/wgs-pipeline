@@ -191,6 +191,7 @@ class PipelineConfig:
         self.freebayes   = None
         self.bcftools    = None
         self.qualimap    = None
+        self.cnvnator    = None
 
         # annovar settings
         self.convert_to_annovar = None
@@ -245,6 +246,9 @@ class PipelineConfig:
             if log_msg: self.logger.info(log_msg)
             return default_value
 
+    def _get_tool_path(self, cfg, tool):
+        return self._get_optional_param(cfg, 'Tools', tool, tool+" {args}", 
+                                        "%s path not set. Using default" % tool)
      
     
     def load_settings_from_file(self, cfg_file):
@@ -268,7 +272,10 @@ class PipelineConfig:
         config.read(cfg_file)
         
         
-        self.input_fastqs = glob.glob(config.get('Paths','input-fastqs'))
+        self.input_fastqs = self._get_optional_param(config, 'Paths', 'input-fastqs', log_msg="Input FASTQs not provided.")
+        self.input_bams = self._get_optional_param(config, 'Paths','input-bams', log_msg="Input BAMs not provided.")
+        if self.input_fastqs is None and self.input_bams is None:
+            raise ConfigParser.NoOptionError("No input provided. Either input-fastqs or input-bams must be set in config file")
         
         self.reference_root = config.get('Paths','reference-root')
         
@@ -286,9 +293,10 @@ class PipelineConfig:
                                                 '/tmp', 'No tmp-dir provided. /tmp will be used.')
         
         # reference files
-        self.reference        = os.path.join(self.reference_root, config.get('Resources', 'reference-genome'))
-        self.gene_coordinates = os.path.join(self.reference_root, config.get('Resources', 'gene-coordinates'))       
-        self.adapters         = os.path.join(self.reference_root, config.get('Resources', 'adapters-fasta'))
+        self.reference         = os.path.join(self.reference_root, config.get('Resources', 'reference-genome'))
+        self.reference_chr_dir = os.path.join(self.reference_root, config.get('Resources', 'reference-genome-chromosomes'))
+        self.gene_coordinates  = os.path.join(self.reference_root, config.get('Resources', 'gene-coordinates'))       
+        self.adapters          = os.path.join(self.reference_root, config.get('Resources', 'adapters-fasta'))
         
         # optional speedseq BED annotations
         beds = [self._get_optional_param(config, 'Resources', val, log_msg='Speedseq\'s BED not set: '+val) \
@@ -298,16 +306,17 @@ class PipelineConfig:
         
         
         # tools
-        self.speedseq    = config.get('Tools','speedseq')
-        self.trimmomatic = config.get('Tools','trimmomatic') 
-        self.bwa         = config.get('Tools','bwa')
-        self.samtools    = config.get('Tools','samtools')
-        self.picard      = config.get('Tools','picard')
-        self.gatk        = config.get('Tools','gatk')
-        self.freebayes   = config.get('Tools','freebayes')
-        self.bcftools    = config.get('Tools','bcftools')
-        self.qualimap    = config.get('Tools','qualimap')
-    	self.fastqc	     = config.get('Tools','fastqc')
+        self.speedseq    = self._get_tool_path(config, 'speedseq')
+        self.trimmomatic = self._get_tool_path(config, 'trimmomatic')
+        self.bwa         = self._get_tool_path(config, 'bwa')
+        self.samtools    = self._get_tool_path(config, 'samtools')
+        self.picard      = self._get_tool_path(config, 'picard')
+        self.gatk        = self._get_tool_path(config, 'gatk')
+        self.freebayes   = self._get_tool_path(config, 'freebayes')
+        self.bcftools    = self._get_tool_path(config, 'bcftools')
+        self.qualimap    = self._get_tool_path(config, 'qualimap')
+    	self.fastqc	     = self._get_tool_path(config, 'fastqc')
+        self.cnvnator    = self._get_tool_path(config, 'cnvnator')
 
 
         # annovar settings
