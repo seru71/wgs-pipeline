@@ -133,7 +133,7 @@ def call_variants(bams, vcf):
 
 @merge(align_reads, os.path.join(cfg.runs_scratch_dir, 'multisample.sv.vcf.gz'))
 def call_svs(bams, vcf):
-    out_prefix = vcf[:-len(".sv.vcf.gz")]
+    out_prefix = vcf[:-len(".vcf.gz")]
     concordant_bams = [bam for (bam, _ , _ ) in bams]
     splitters_bams  = [bam for ( _ ,bam, _ ) in bams]
     discordant_bams = [bam for ( _ , _ ,bam) in bams]
