@@ -4,6 +4,7 @@
 # Functions implementing recurring pipeline tasks
 #
 
+import os
 from utils import run_cmd, run_piped_command
 from pipeline.config import PipelineConfig
 
@@ -95,7 +96,7 @@ def speedseq_sv(output_prefix, ref_genome,
                     bams = bams, splitters = splitters, discords = discordants,
                     threads = threads)
                         
-    run_cmdPipelineConfig.getInstance().speedseq, args, None)
+    run_cmd(PipelineConfig.getInstance().speedseq, args, None)
 
 
 
@@ -114,41 +115,43 @@ def cnvnator_sv(bam, calls, genome_dir, bin_size=100,
     bs = str(bin_size)
     
     args1="-root {rf} -tree {bam} -unique -lite -chrom {chrom} \
-          >> ${err} 2>&1".format(rf=rootfile, bam=bam, 
+          >> {err} 2>&1".format(rf=rootfile, bam=bam, 
                                  chrom=chromosomes, err=errfile)
                                       
-    args2="-root {rf} -his {binsize} -d {genome_dir} >> ${err} 2>&1\
+    args2="-root {rf} -his {binsize} -d {genome_dir} >> {err} 2>&1\
           ".format(rf=rootfile, binsize=bs, 
                    genome_dir=genome_dir, err=errfile)
 
-    args3="-root {rf} -stat {binsize} >> ${err} 2>&1\
+    args3="-root {rf} -stat {binsize} >> {err} 2>&1\
           ".format(rf=rootfile, binsize=bs, err=errfile)
           
-    args4="-root {rf} -partition {binsize} >> ${err} 2>&1\
+    args4="-root {rf} -partition {binsize} >> {err} 2>&1\
           ".format(rf=rootfile, binsize=bs, err=errfile)
 
-    args5="-root {rf} -call {binsize} > {calls} 2>>${err}\
+    args5="-root {rf} -call {binsize} > {calls} 2>>{err}\
           ".format(rf=rootfile, binsize=bs, calls=calls, err=errfile)
 
     args = [ args1, args2, args3, args4, args5 ]
     for arg in args:
-        run_cmd(PipelineConfig.getInstance().cnvnator, a, None)
+        run_cmd(PipelineConfig.getInstance().cnvnator, arg, None)
 
     # cleanup
-    os.path.remove(rootfile)
+    os.remove(rootfile)
 
 
 def cnvnator_calls2bed(calls, bed, bam=None):
     ''' reformats cnvnator calls file to a BED including a column with mean MQ '''
 
     if bam: # calculating mean MQ for regions
-        
-        cmd = "for reg in `cut -f2 {calls}`; do "+
-                 "samtools view {bam} $reg | awk '{sum+=$5}END{if (NR==0) {print \"NA\"} else {print sum/NR}}'; "+
-              "done > {calls}.mqs 2>/dev/null".format(bam=bam, calls=calls)
-        run_cmd(cmd,args)
+        mqs_file = calls+".mqs"
+        if os.path.exists(mqs_file): os.remove(mqs_file)
+        with open(calls, 'r') as calls_file:
+            for l in calls_file:
+                reg = l.strip().split('\t')[1]
+                run_piped_command(PipelineConfig.getInstance().samtools, "view {bam} {reg}".format(bam=bam, reg=reg), None,
+                                  "awk {args}", "\'{sum+=$5}END{if (NR==0) {print \"NA\"} else {print sum/NR}}\' >> %s" % mqs_file)
     
-    with open(calls, 'r') as calls_file, 
+    with open(calls, 'r') as calls_file, \
          open(bed, 'w') as bed:
          
         mqs = open(calls+'.mqs', 'r') if bam else None
@@ -158,10 +161,11 @@ def cnvnator_calls2bed(calls, bed, bam=None):
              c,s,e = ls[1].replace(':','\t').replace('-','\t').split('\t')
              cnvtype = ls[0].replace("deletion","DEL").replace("duplication","DUP")
              
-             bed.write('\t'.join(c, s, e, ls[2:3], cnvtype, ls[4:10], 
-                                 mqs.readline() if mqs else "\n"))
+             bed.write('\t'.join([c, s, e, ls[2], ls[3], cnvtype] + \
+                                 ls[4:10] + \
+                                 [mqs.readline() if mqs else "\n"]))
         
-        close(mqs)
+        mqs.close()
             
 
 

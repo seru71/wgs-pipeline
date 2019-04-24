@@ -79,20 +79,20 @@ from pipeline.tasks import speedseq_sv, cnvnator_sv, cnvnator_calls2bed
 from ruffus import *
 
 
-@transform(cfg.input_bams, suffix('.bam'), '.sv.cnvnator.bed')
-def call_sv_cnvnator(inbam, outbed):
-    
-    calls_file = outbed[:-len("bed")]+"calls"
-    
-    # call CNVs
-    cnvnator_sv(inbam, calls_file, cfg.reference_chr_dir)
-    
-    # convert CNVnator format to BED
-    cnvnator_calls2bed(calls_file, outbed, inbam)
+@transform(cfg.input_bams, suffix(".bam"), ".bam.sv.cnvnator.calls")
+def call_sv_cnvnator(inbam, calls):
+    """ call CNVs using CNVnator """
+    cnvnator_sv(inbam, calls, cfg.reference_chr_dir)
+
+@transform(call_sv_cnvnator, suffix(".bam.sv.cnvnator.calls"), add_inputs(r"\1.bam"), ".bam.sv.cnvnator.bed")
+def convert_cnvnator2bed(inputs, bed):
+    """ convert CNVnator call to BED format """
+    calls, bam = inputs
+    cnvnator_calls2bed(calls, bed, bam)
 
 
 @merge(cfg.input_bams, os.path.join(cfg.runs_scratch_dir, 'multisample.sv.speedseq.vcf.gz'))
-def call_svs(bams, vcf):
+def call_sv_speedseq(bams, vcf):
     out_prefix = vcf[:-len(".vcf.gz")]
     concordant_bams = [bam for (bam, _ , _ ) in bams]
     splitters_bams  = [bam for ( _ ,bam, _ ) in bams]
@@ -111,17 +111,6 @@ def call_svs(bams, vcf):
 #############
 
 
-@follows(mkdir(os.path.join(cfg.runs_scratch_dir,'qc')))
-@transform(call_variants, formatter(), os.path.join('{subpath[0][0]}','qc','multisample.variant_stats'))
-def qc_multisample_vcf(vcf, output):
-    """ Generate variant QC table for all samples """    
-    args = "stats -F {ref} -s - {vcf} > {out}\
-            ".format(ref=cfg.reference, 
-                     vcf=vcf,
-                     out=output)
-    
-    run_cmd(cfg.bcftools, args)
-    
 
 
 
@@ -138,7 +127,7 @@ def cleanup_files():
 
 
 @posttask(cleanup_files)
-@follows(qc_multisample_vcf)
+@follows(call_sv_cnvnator)
 def complete_run():
     pass
 

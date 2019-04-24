@@ -6,6 +6,35 @@ from pipeline.config import PipelineConfig
 cfg = PipelineConfig.getInstance()
 
 """
+Command is given explicitly as a string and executed using ruffus drmaa_wrapper
+"""
+def run_shell_cmd(cmd, run_locally=True,
+            cpus=1, mem_per_cpu=1024, walltime='24:00:00', 
+            retain_job_scripts = True, job_script_dir = None):
+                
+    if job_script_dir is None:
+        job_script_dir = os.path.join(cfg.runs_scratch_dir, "drmaa")
+
+    
+    stdout, stderr = "", ""
+    job_options = "--ntasks=1 \
+                   --cpus-per-task={cpus} \
+                   --mem-per-cpu={mem} \
+                   --time={time} \
+                  ".format(cpus=cpus, mem=int(1.2*mem_per_cpu), time=walltime)
+#    print cmd                   
+    try:
+        stdout, stderr = run_job(cmd.strip(), 
+                                 job_other_options=job_options,
+                                 run_locally = run_locally, 
+                                 retain_job_scripts = retain_job_scripts, job_script_directory = job_script_dir,
+                                 logger=cfg.logger, working_directory=os.getcwd(),
+                                 drmaa_session = cfg.drmaa_session)
+    except error_drmaa_job as err:
+        raise Exception("\n".join(map(str, ["Failed to run:", cmd, err, stdout, stderr])))
+
+
+"""
 cmd is given in a form:
     
     command {args}
@@ -19,33 +48,12 @@ Examples of correct commands:
     cmd = "java {interpreter_args} -jar myjarfile.jar {args} -extras extra_arg
     cmd = "java -XmX4G {interpreter_args} -jar myjarfile.jar {args} -extras extra_arg
 """
-def run_cmd(cmd, args, interpreter_args=None, run_locally=True,
-            cpus=1, mem_per_cpu=1024, walltime='24:00:00', 
-            retain_job_scripts = True, job_script_dir = None):
+def run_cmd(cmd, args, interpreter_args=None, **restargs):
     
-    if job_script_dir is None:
-        job_script_dir = os.path.join(cfg.runs_scratch_dir, "drmaa")
-
     full_cmd = "nice "+cmd.format(args=args, 
                           interpreter_args = interpreter_args if interpreter_args!=None else "")
 
-    stdout, stderr = "", ""
-    job_options = "--ntasks=1 \
-                   --cpus-per-task={cpus} \
-                   --mem-per-cpu={mem} \
-                   --time={time} \
-                  ".format(cpus=cpus, mem=int(1.2*mem_per_cpu), time=walltime)
-#    print full_cmd                   
-    try:
-        stdout, stderr = run_job(full_cmd.strip(), 
-                                 job_other_options=job_options,
-                                 run_locally = run_locally, 
-                                 retain_job_scripts = retain_job_scripts, job_script_directory = job_script_dir,
-                                 logger=cfg.logger, working_directory=os.getcwd(),
-                                 drmaa_session = cfg.drmaa_session)
-    except error_drmaa_job as err:
-        raise Exception("\n".join(map(str, ["Failed to run:", cmd, err, stdout, stderr])))
-
+    run_shell_cmd(full_cmd, **restargs)
 
 
 """ 
@@ -67,7 +75,7 @@ def run_piped_command(*args):
                   ".format(cpus=cpus, mem=int(1.2*mem_per_cpu), time=walltime)
 	
     full_cmd = "nice " + expand_piped_command(*args)
-#    print full_cmd	
+    #print full_cmd	
     try:
         stdout, stderr = run_job(full_cmd.strip(), 
                                  job_other_options=job_options,
