@@ -161,7 +161,7 @@ def cnvnator_calls2bed(calls, bed, bam=None):
              c,s,e = ls[1].replace(':','\t').replace('-','\t').split('\t')
              cnvtype = ls[0].replace("deletion","DEL").replace("duplication","DUP")
              
-             bed.write('\t'.join([c, s, e, ls[2], ls[3], cnvtype] + \
+             bed.write('\t'.join([c, s, e, cnvtype, ls[1], ls[3], ls[2]] + \
                                  ls[4:10] + \
                                  [mqs.readline() if mqs else "\n"]))
         
