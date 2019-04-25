@@ -114,7 +114,7 @@ def cnvnator_sv(bam, calls, genome_dir, bin_size=100,
     errfile  = rootfile+'.err'
     bs = str(bin_size)
     
-    args1="-root {rf} -tree {bam} -unique -lite -chrom {chrom} \
+    args1="-root {rf} -tree {bam} -lite -chrom {chrom} \
           >> {err} 2>&1".format(rf=rootfile, bam=bam, 
                                  chrom=chromosomes, err=errfile)
                                       
