@@ -280,7 +280,9 @@ class PipelineConfig:
         self.input_fastqs = self._get_optional_param(config, 'Paths', 'input-fastqs', log_msg="Input FASTQs not provided.")
         self.input_bams = self._get_optional_param(config, 'Paths','input-bams', log_msg="Input BAMs not provided.")
         if self.input_fastqs is None and self.input_bams is None:
-            raise ConfigParser.NoOptionError("No input provided. Either input-fastqs or input-bams must be set in config file")
+            # No input provided. Either input-fastqs or input-bams must be set in config file
+            raise ConfigParser.NoOptionError("input-fastqs or input-bams", "Paths")
+            
         
         self.reference_root = config.get('Paths','reference-root')
         

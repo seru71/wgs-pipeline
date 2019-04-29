@@ -74,7 +74,7 @@ if __name__ == '__main__':
 
 
 from pipeline.utils import run_cmd, run_piped_command
-from pipeline.tasks import speedseq_sv, cnvnator_sv, cnvnator_calls2bed, vep_annotate_bed
+from pipeline.tasks import *
 
 from ruffus import *
 
@@ -90,7 +90,7 @@ def call_sv_cnvnator(inbam, calls):
 def calc_mean_mq_for_calls(inputs, mqs):
     """ calculates mean MQ for each CNVnator call"""
     calls, bam = inputs
-    get_mean_MQ_for_regions(calls, bed, mqs)
+    get_mean_MQ_for_regions(bam, calls, mqs)
 
 @transform(calc_mean_mq_for_calls, suffix(".calls.mqs"), add_inputs(r"\1.calls"), ".bed")
 def convert_cnvnator2bed(inputs, bed):
