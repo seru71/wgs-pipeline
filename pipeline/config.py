@@ -192,7 +192,12 @@ class PipelineConfig:
         self.bcftools    = None
         self.qualimap    = None
         self.cnvnator    = None
+        self.vep         = None
 
+        # VEP settings
+        self.vep_cache_dir    = None
+        self.vep_genome_build = None
+        
         # annovar settings
         self.convert_to_annovar = None
         self.annovar_annotate   = None
@@ -317,7 +322,14 @@ class PipelineConfig:
         self.qualimap    = self._get_tool_path(config, 'qualimap')
     	self.fastqc	     = self._get_tool_path(config, 'fastqc')
         self.cnvnator    = self._get_tool_path(config, 'cnvnator')
-
+        self.vep         = self._get_tool_path(config, 'vep')
+    
+        # vep settings
+        self.vep_cache_dir = self._get_optional_param(config, 'VEP','vep-cache-dir', \
+                            None, 'VEP cache-dir setting is missing. Using VEP\'s default.')
+        self.vep_genome_build = self._get_optional_param(config, 'VEP','vep-genome-build', \
+                            "GRCh38", 'VEP genome-build setting is missing. Using GRCh38.')
+        
 
         # annovar settings
         self.convert_to_annovar                 = os.path.join(config.get('Annovar','annovar_home'), 

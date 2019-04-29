@@ -74,22 +74,63 @@ if __name__ == '__main__':
 
 
 from pipeline.utils import run_cmd, run_piped_command
-from pipeline.tasks import speedseq_sv, cnvnator_sv, cnvnator_calls2bed
+from pipeline.tasks import speedseq_sv, cnvnator_sv, cnvnator_calls2bed, vep_annotate_bed
 
 from ruffus import *
 
-
+#
+# CNVnator
+#
 @transform(cfg.input_bams, suffix(".bam"), ".bam.sv.cnvnator.calls")
 def call_sv_cnvnator(inbam, calls):
-    """ call CNVs using CNVnator """
+    """ Call CNVs using CNVnator """
     cnvnator_sv(inbam, calls, cfg.reference_chr_dir)
 
-@transform(call_sv_cnvnator, suffix(".bam.sv.cnvnator.calls"), add_inputs(r"\1.bam"), ".bam.sv.cnvnator.bed")
-def convert_cnvnator2bed(inputs, bed):
-    """ convert CNVnator call to BED format """
+@transform(call_sv_cnvnator, suffix(".bam.sv.cnvnator.calls"), add_inputs(r"\1.bam"), ".bam.sv.cnvnator.calls.mqs")
+def calc_mean_mq_for_calls(inputs, mqs):
+    """ calculates mean MQ for each CNVnator call"""
     calls, bam = inputs
-    cnvnator_calls2bed(calls, bed, bam)
+    get_mean_MQ_for_regions(calls, bed, mqs)
 
+@transform(calc_mean_mq_for_calls, suffix(".calls.mqs"), add_inputs(r"\1.calls"), ".bed")
+def convert_cnvnator2bed(inputs, bed):
+    """ Convert CNVnator call to BED format """
+    mqs, calls = inputs
+    cnvnator_calls2bed(calls, bed, mqs)
+
+
+@transform(convert_cnvnator2bed, suffix(".bed"), ".bed.vep")
+def annotate_cnvnator_bed(cnvnator_bed, vep_table):
+    """ Annotate CNVnator BED using VEP """
+    vep_annotate_bed(cnvnator_bed, vep_table)
+    
+    
+@transform(annotate_cnvnator_bed, suffix(".bed.vep"), add_inputs(r"\1.bed"), ".vep.tsv")
+def join_cnvnator_annotations_and_calls(inputs, out_table):
+    """ Concatenate VEP output with variant call details """
+    vep_table, cnvnator_bed = inputs
+    with open(vep_table, 'r') as vep, \
+         open(cnvnator_bed, 'r') as bed, \
+         open(out_table, 'w') as table:
+        
+        last_vep_record_id = None
+        for vl in vep:
+            if vl.startswith("##"):
+                table.write(vl)
+            elif vl.startswith("#Uploaded_variation"):
+                table.write('\t'.join(vl.strip().split('\t')[1:] + ["Length","Depth_Ratio","PV1","PV2","PV3","PV4","Q0","MQ_avg\n"]))
+            else:
+                vep_records = vl.strip().split('\t')
+                if vep_records[0] != last_vep_record_id:
+                    last_vep_record_id = vep_records[0]
+                    bed_records = bed.readline().split('\t')
+                
+                try:
+                    table.write('\t'.join(vep_records[1:] + [bed_records[4]] + bed_records[6:]))
+                except IndexError:
+                    print vep_records
+                    print bed_records
+    
 
 @merge(cfg.input_bams, os.path.join(cfg.runs_scratch_dir, 'multisample.sv.speedseq.vcf.gz'))
 def call_sv_speedseq(bams, vcf):

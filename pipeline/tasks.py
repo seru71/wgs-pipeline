@@ -8,7 +8,7 @@ import os
 from utils import run_cmd, run_piped_command
 from pipeline.config import PipelineConfig
 
-cfg = PipelineConfig.getInstance()
+#cfg = PipelineConfig.getInstance()
 
 #
 # alignment
@@ -24,8 +24,8 @@ def bwa_map_and_sort(output_bam, ref_genome, fq1, fq2=None, read_group=None, thr
 
 	samtools_args = "sort -o {out}".format(out=output_bam)
 
-	run_piped_command(cfg.bwa, bwa_args, None,
-	                  cfg.samtools, samtools_args, None)
+	run_piped_command(PipelineConfig.getInstance().bwa, bwa_args, None,
+	                  PipelineConfig.getInstance().samtools, samtools_args, None)
                            
                            
 def speedseq_align(output_prefix, read_group, ref_genome, fq1, fq2=None, threads=8):
@@ -35,7 +35,7 @@ def speedseq_align(output_prefix, read_group, ref_genome, fq1, fq2=None, threads
                      fq2="" if fq2 is None else fq2,
                      threads = threads)
     
-    run_cmd(cfg.speedseq, args, None)
+    run_cmd(PipelineConfig.getInstance().speedseq, args, None)
 
 
 
@@ -47,13 +47,15 @@ def samtools_index(bam):
 
 def recalibrateBQ(bam, metrics_table):
     """ GATK BQSR """
-    run_cmd(cfg.gatk, "BaseRecalibrator \
+    cfg = PipelineConfig.getInstance()
+    run_cmd(PipelineConfig.getInstance().gatk, 
+                "BaseRecalibrator \
                         -I {bam} \
                         -R {ref} \
                         --known-sites {sites} \
                         -O {table} \
                         ".format(bam=bam, 
-                                ref=cfg.ref_genome,
+                                ref=cfg.reference,
                                 sites=cfg.dbsnp_vcf,
                                 table=metrics_table))
                                 
@@ -139,29 +141,21 @@ def cnvnator_sv(bam, calls, genome_dir, bin_size=100,
     os.remove(rootfile)
 
 
-def cnvnator_calls2bed(calls, bed, bam=None):
-    ''' reformats cnvnator calls file to a BED including a column with mean MQ '''
 
-    if bam: # calculating mean MQ for regions
-        mqs_file = calls+".mqs"
-        if os.path.exists(mqs_file): os.remove(mqs_file)
-        with open(calls, 'r') as calls_file:
-            for l in calls_file:
-                reg = l.strip().split('\t')[1]
-                run_piped_command(PipelineConfig.getInstance().samtools, "view {bam} {reg}".format(bam=bam, reg=reg), None,
-                                  "awk {args}", "\'{sum+=$5}END{if (NR==0) {print \"NA\"} else {print sum/NR}}\' >> %s" % mqs_file)
-    
+def cnvnator_calls2bed(calls, bed, mqs_file=None):
+    ''' reformats cnvnator calls file to a BED including an optional column with mean MQ '''
+
     with open(calls, 'r') as calls_file, \
          open(bed, 'w') as bed:
          
-        mqs = open(calls+'.mqs', 'r') if bam else None
+        mqs = open(mqs_file, 'r') if mqs_file else None
         for l in calls_file:
              ls = l.strip().split('\t')
              
              c,s,e = ls[1].replace(':','\t').replace('-','\t').split('\t')
              cnvtype = ls[0].replace("deletion","DEL").replace("duplication","DUP")
              
-             bed.write('\t'.join([c, s, e, cnvtype, ls[1], ls[3], ls[2]] + \
+             bed.write('\t'.join([c, s, e, cnvtype, ls[2], ls[1], ls[3]] + \
                                  ls[4:10] + \
                                  [mqs.readline() if mqs else "\n"]))
         
@@ -169,7 +163,19 @@ def cnvnator_calls2bed(calls, bed, bam=None):
             
 
 
+#
+# Annotation
+#
 
+def vep_annotate_bed(bed, output):
+    vep_args="--cache {cache} --assembly {assembly} -i {bed} -o {vep_table} \
+         --tab --no_stats --force_overwrite --per_gene --symbol \
+         --numbers --regulatory --canonical --biotype --gene_phenotype \
+         ".format(cache="--dir_cache %s" % cfg.vep_cache_dir if cfg.vep_cache_dir else "", \
+                  assembly = cfg.vep_genome_build, \
+                  bed=bed, vep_table=output)
+
+    run_cmd(cfg.vep, vep_args, None)
 
 #
 # QC
@@ -178,12 +184,23 @@ def cnvnator_calls2bed(calls, bed, bam=None):
 def produce_fastqc_report(fastq_file, output_dir=None):
     args = fastq_file
     args += (' -o '+output_dir) if output_dir != None else ''
-    run_cmd(cfg.fastqc, args)
+    run_cmd(PipelineConfig.getInstance().fastqc, args)
 
-                                                      
+      
+def get_mean_MQ_for_regions(bam, calls, mqs_file):
+    """ calls file must be a tab-separated file with regions specified as chr:start-end format in the second column"""
+    if os.path.exists(mqs_file): os.remove(mqs_file)
+    with open(calls, 'r') as calls_file:
+        for l in calls_file:
+            reg = l.strip().split('\t')[1]
+            run_piped_command(PipelineConfig.getInstance().samtools, "view {bam} {reg}".format(bam=bam, reg=reg), None,
+                              "awk {args}", "\'{sum+=$5}END{if (NR==0) {print \"NA\"} else {print sum/NR}}\' >> %s" % mqs_file)
+
+
+
 def bam_quality_score_distribution(bam,qs,pdf):
     """Calculates quality score distribution histograms"""
-    run_cmd(cfg.picard, "QualityScoreDistribution \
+    run_cmd(PipelineConfig.getInstance().picard, "QualityScoreDistribution \
                     CHART_OUTPUT={chart} \
                     OUTPUT={out} \
                     INPUT={bam} \
