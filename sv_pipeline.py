@@ -133,7 +133,7 @@ def join_cnvnator_annotations_and_calls(inputs, out_table):
             if vl.startswith("##"):
                 table.write(vl)
             elif vl.startswith("#Uploaded_variation"):
-                table.write('\t'.join(vl.strip().split('\t')[1:] + ["Length","Depth_Ratio","PV1","PV2","PV3","PV4","Q0","MQ_avg\n"]))
+                table.write('\t'.join(vl.strip().split('\t')[1:] + ["Length","Depth_Ratio","PV1","PV2","PV3","PV4","Q0","MQ_avg","meanAC","minAC","maxAC\n"]))
             else:
                 vep_records = vl.strip().split('\t')
                 if vep_records[0] != last_vep_record_id:
