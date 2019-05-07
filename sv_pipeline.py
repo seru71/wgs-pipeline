@@ -99,7 +99,22 @@ def convert_cnvnator2bed(inputs, bed):
     cnvnator_calls2bed(calls, bed, mqs)
 
 
-@transform(convert_cnvnator2bed, suffix(".bed"), ".bed.vep")
+@merge(convert_cnvnator2bed, os.path.join(cfg.runs_scratch_dir, 'multisample.sv.cnvnator.AC.bed'))
+def get_cnvnator_AC(beds, ac_bed):
+    """ Calculate how common BED entries are in the population of samples """
+    args="multiinter -i %s" % ' '.join(beds)
+    run_piped_command(cfg.bedtools, args, None,
+                      "cut {args}", "-f1-4 > %s" % ac_bed, None)
+
+@transform(convert_cnvnator2bed, suffix(".bed"), add_inputs(get_cnvnator_AC), ".AC.bed")
+def add_AC_to_cnvnator_bed(inputs, outbed):
+    """ Add AC columns to CNVnator BED """
+    bed, ac_bed = inputs
+    run_cmd(cfg.bedtools, "map -a {bed} -b {ac} -c 4 -o mean,min,max > {out}\
+                          ".format(bed=bed, ac=ac_bed, out=outbed))
+
+
+@transform(add_AC_to_cnvnator_bed, suffix(".bed"), ".bed.vep")
 def annotate_cnvnator_bed(cnvnator_bed, vep_table):
     """ Annotate CNVnator BED using VEP """
     vep_annotate_bed(cnvnator_bed, vep_table)

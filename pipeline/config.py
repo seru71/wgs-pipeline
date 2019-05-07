@@ -190,6 +190,7 @@ class PipelineConfig:
         self.gatk        = None
         self.freebayes   = None
         self.bcftools    = None
+        self.bedtools    = None
         self.qualimap    = None
         self.cnvnator    = None
         self.vep         = None
@@ -321,6 +322,7 @@ class PipelineConfig:
         self.gatk        = self._get_tool_path(config, 'gatk')
         self.freebayes   = self._get_tool_path(config, 'freebayes')
         self.bcftools    = self._get_tool_path(config, 'bcftools')
+        self.bedtools    = self._get_tool_path(config, 'bedtools')
         self.qualimap    = self._get_tool_path(config, 'qualimap')
     	self.fastqc	     = self._get_tool_path(config, 'fastqc')
         self.cnvnator    = self._get_tool_path(config, 'cnvnator')
