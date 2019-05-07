@@ -168,6 +168,7 @@ def cnvnator_calls2bed(calls, bed, mqs_file=None):
 #
 
 def vep_annotate_bed(bed, output):
+    cfg = PipelineConfig.getInstance()
     vep_args="--cache {cache} --assembly {assembly} -i {bed} -o {vep_table} \
          --tab --no_stats --force_overwrite --per_gene --symbol \
          --numbers --regulatory --canonical --biotype --gene_phenotype \
