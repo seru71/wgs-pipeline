@@ -10,6 +10,7 @@ from pipeline.config import PipelineConfig
 
 #cfg = PipelineConfig.getInstance()
 
+
 #
 # alignment
 #
@@ -35,7 +36,7 @@ def speedseq_align(output_prefix, read_group, ref_genome, fq1, fq2=None, threads
                      fq2="" if fq2 is None else fq2,
                      threads = threads)
     
-    run_cmd(PipelineConfig.getInstance().speedseq, args, None)
+    run_cmd(PipelineConfig.getInstance().speedseq, args)
 
 
 
@@ -76,8 +77,31 @@ def speedseq_var(output_prefix, ref_genome, bams, include_bed=None, annotate=Fal
     for bam in bams:
         args += " "+bam
     
-    run_cmd(PipelineConfig.getInstance().speedseq, args, None)
+    run_cmd(PipelineConfig.getInstance().speedseq, args)
 
+
+def vt_normalize(input_vcf, output_vcf, ref_genome, log=None):
+    
+    if log is None:
+        log = output_vcf + '.log'
+    
+    decompose_args = 'decompose %s ' % input_vcf
+    normalize_args = "normalize -n -r {ref} -o {out} {vcf} > {log} \
+                     ".format(ref = ref_genome,
+                              vcf = input_vcf,
+                              out = output_vcf,
+                              log = log)
+    
+    run_piped_command(PipelineConfig.getInstance().vt, decompose_args, None,
+                      PipelineConfig.getInstance().vt, normalize_args, None)
+    
+    # output of vt is not compressed
+    if output_vcf.endswith(".gz") or output_vcf.endswith(".bgz"):
+        tmp_vcf = ".".join(output_vcf.split(".")[0:-1])
+        os.rename(output_vcf, tmp_vcf)
+        bgzip_and_tabix(tmp_vcf, output_vcf)
+        os.remove(tmp_vcf)
+        
 
 def speedseq_sv(output_prefix, ref_genome, 
                 concordant_bams, splitters_bams, discordant_bams, 
@@ -98,7 +122,7 @@ def speedseq_sv(output_prefix, ref_genome,
                     bams = bams, splitters = splitters, discords = discordants,
                     threads = threads)
                         
-    run_cmd(PipelineConfig.getInstance().speedseq, args, None)
+    run_cmd(PipelineConfig.getInstance().speedseq, args)
 
 
 
@@ -135,7 +159,7 @@ def cnvnator_sv(bam, calls, genome_dir, bin_size=100,
 
     args = [ args1, args2, args3, args4, args5 ]
     for arg in args:
-        run_cmd(PipelineConfig.getInstance().cnvnator, arg, None)
+        run_cmd(PipelineConfig.getInstance().cnvnator, arg)
 
     # cleanup
     os.remove(rootfile)
@@ -161,6 +185,12 @@ def cnvnator_calls2bed(calls, bed, mqs_file=None):
         
         mqs.close()
             
+
+def bgzip_and_tabix(vcf, bgzipped_vcf=None):
+    if bgzipped_vcf is None:
+        bgzipped_vcf = vcf+".gz"
+    run_cmd("bgzip {args}", "-c {} > {}".format(vcf, bgzipped_vcf))
+    run_cmd("tabix {args}", "-p vcf %s" % bgzipped_vcf)
 
 
 #

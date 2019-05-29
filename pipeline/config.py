@@ -194,6 +194,7 @@ class PipelineConfig:
         self.qualimap    = None
         self.cnvnator    = None
         self.vep         = None
+        self.vt          = None
 
         # VEP settings
         self.vep_cache_dir    = None
@@ -326,6 +327,7 @@ class PipelineConfig:
     	self.fastqc	     = self._get_tool_path(config, 'fastqc')
         self.cnvnator    = self._get_tool_path(config, 'cnvnator')
         self.vep         = self._get_tool_path(config, 'vep')
+        self.vt          = self._get_tool_path(config, 'vt')
     
         # vep settings
         self.vep_cache_dir = self._get_optional_param(config, 'VEP','vep-cache-dir', \

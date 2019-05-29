@@ -131,6 +131,11 @@ def call_variants(bams, vcf):
                  cfg.speedseq_include_bed, threads=cfg.num_jobs)
 
 
+@transform(call_variants, suffix(".vcf.gz"), ".norm.vcf.gz")
+def normalize_variants(vcf, norm_vcf):
+    vt_normalize(vcf, norm_vcf, cfg.reference)
+
+
 @merge(align_reads, os.path.join(cfg.runs_scratch_dir, 'multisample.sv.vcf.gz'))
 def call_svs(bams, vcf):
     out_prefix = vcf[:-len(".vcf.gz")]
