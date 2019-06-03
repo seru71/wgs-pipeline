@@ -74,7 +74,9 @@ if __name__ == '__main__':
 
 
 from pipeline.utils import run_cmd, run_piped_command
-from pipeline.tasks import produce_fastqc_report, speedseq_align, speedseq_var, speedseq_sv
+from pipeline.tasks import produce_fastqc_report, \
+                            speedseq_align, speedseq_var, speedseq_sv, \
+                            vt_normalize
 
 from ruffus import *
 
