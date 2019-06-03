@@ -93,14 +93,7 @@ def vt_normalize(input_vcf, output_vcf, ref_genome, log=None):
     
     run_piped_command(PipelineConfig.getInstance().vt, decompose_args, None,
                       PipelineConfig.getInstance().vt, normalize_args, None)
-    
-    # output of vt is not compressed
-    if output_vcf.endswith(".gz") or output_vcf.endswith(".bgz"):
-        tmp_vcf = ".".join(output_vcf.split(".")[0:-1])
-        os.rename(output_vcf, tmp_vcf)
-        bgzip_and_tabix(tmp_vcf, output_vcf)
-        os.remove(tmp_vcf)
-        
+            
 
 def speedseq_sv(output_prefix, ref_genome, 
                 concordant_bams, splitters_bams, discordant_bams, 
