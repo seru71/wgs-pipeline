@@ -86,9 +86,8 @@ def vt_normalize(input_vcf, output_vcf, ref_genome, log=None):
         log = output_vcf + '.log'
     
     decompose_args = 'decompose %s ' % input_vcf
-    normalize_args = "normalize -n -r {ref} -o {out} {vcf} > {log} \
+    normalize_args = "normalize -n -r {ref} -o {out} - > {log} \
                      ".format(ref = ref_genome,
-                              vcf = input_vcf,
                               out = output_vcf,
                               log = log)
     
