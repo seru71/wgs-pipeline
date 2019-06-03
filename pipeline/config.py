@@ -199,6 +199,7 @@ class PipelineConfig:
         # VEP settings
         self.vep_cache_dir    = None
         self.vep_genome_build = None
+        self.vep_gnomad_genomes_vcf = None
         
         # annovar settings
         self.convert_to_annovar = None
@@ -334,7 +335,10 @@ class PipelineConfig:
                             None, 'VEP cache-dir setting is missing. Using VEP\'s default.')
         self.vep_genome_build = self._get_optional_param(config, 'VEP','vep-genome-build', \
                             "GRCh38", 'VEP genome-build setting is missing. Using GRCh38.')
-        
+        gnomadg_vcf = self._get_optional_param(config, 'VEP','vep-gnomad-genomes-vcf', \
+                            None, 'VEP gnomAD genomes VCF missing and will not be used in annotation.')
+        if gnomadg_vcf: 
+            self.vep_gnomad_genomes_vcf = os.path.join(self.reference_root, gnomadg_vcf)
 
         # annovar settings
         self.convert_to_annovar                 = os.path.join(config.get('Annovar','annovar_home'), 

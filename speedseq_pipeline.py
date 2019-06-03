@@ -76,7 +76,7 @@ if __name__ == '__main__':
 from pipeline.utils import run_cmd, run_piped_command
 from pipeline.tasks import produce_fastqc_report, \
                             speedseq_align, speedseq_var, speedseq_sv, \
-                            vt_normalize
+                            bgzip_and_tabix, vt_normalize, vep_annotate_vcf
 
 from ruffus import *
 
@@ -98,13 +98,12 @@ def link_fastqs(fastq_in, fastq_out):
     if not os.path.exists(fastq_out):
         os.symlink(fastq_in, fastq_out) 
 
-   
-@follows(mkdir(os.path.join(cfg.runs_scratch_dir,'qc')), mkdir(os.path.join(cfg.runs_scratch_dir,'qc','read_qc')))
-@transform(link_fastqs, formatter('.+/(?P<SAMPLE_ID>[^/]+)\.fastq\.gz$'), 
-           os.path.join(cfg.runs_scratch_dir,'qc','read_qc/')+'{SAMPLE_ID[0]}_fastqc.html')
-def qc_raw_fastq(input_fastq, report):
-    """ Generate FastQC report for raw FASTQs """
-    produce_fastqc_report(input_fastq, os.path.dirname(report))
+
+#####################3
+#
+# Mapping
+#
+################
 
  
 MAPPING_JOB_LIMIT=3
@@ -125,18 +124,19 @@ def align_reads(fastqs, bams, sample_id):
     speedseq_align(bam_prefix, read_group, cfg.reference, fastqs[0], fastqs[1], threads=int(cfg.num_jobs/MAPPING_JOB_LIMIT))
 
 
+####################
+# 
+# Calling
+#
+################
+
+
 @merge(align_reads, os.path.join(cfg.runs_scratch_dir, 'multisample.vcf.gz'))
 def call_variants(bams, vcf):
     out_prefix = vcf[:-len(".vcf.gz")]
     concordant_bams = [bam for (bam, _, _) in bams]
     speedseq_var(out_prefix, cfg.reference, concordant_bams, 
                  cfg.speedseq_include_bed, threads=cfg.num_jobs)
-
-
-@transform(call_variants, suffix(".vcf.gz"), ".norm.vcf.gz")
-def normalize_variants(vcf, norm_vcf):
-    vt_normalize(vcf, norm_vcf, cfg.reference)
-
 
 @merge(align_reads, os.path.join(cfg.runs_scratch_dir, 'multisample.sv.vcf.gz'))
 def call_svs(bams, vcf):
@@ -147,15 +147,60 @@ def call_svs(bams, vcf):
     
     speedseq_sv(out_prefix, cfg.reference, 
                 concordant_bams, splitters_bams, discordant_bams,
-                exclude_bed=cfg.speedseq_lumpy_exclude_bed, threads=cfg.num_jobs
+                exclude_bed=cfg.speedseq_lumpy_exclude_bed, threads=cfg.num_jobs)
 
 
+#######################
+#
+# Variant postprocessing
+#
+####################
+
+
+
+
+@transform(call_variants, suffix(".vcf.gz"), ".norm.vcf.gz")
+def normalize_variants(vcf, norm_vcf):
+    vt_normalize(vcf, norm_vcf, cfg.reference)
+
+
+@transform(normalize_variants, suffix(".vcf.gz"), ".innerAC9.vcf.gz")
+def filter_inner_AC(normalized_vcf, filtered_vcf):
+    AC_cutoff = 9
+    tmp_vcf = vep_vcf.split(".")[:-1]
+    args = "filter \
+            -e 'INFO/AC[0]>{AC_cutoff}' \
+            -o {outvcf} {invcf} \
+           ".format(AC_cutoff=AC_cutoff,
+                    outvcf = tmp_vcf,
+                    invcf  = normalized_vcf)
+    
+    run_cmd(cfg.bcftools, args, None)
+    
+    
+    bgzip_and_tabix(tmp_vcf)
+    os.remove(tmp_vcf)
+
+
+
+@transform(filter_inner_AC, suffix(".vcf.gz"), ".vep.vcf.gz")
+def annotate_filtered_vcf(vcf, vep_vcf):
+    vep_annotate_vcf(vcf, vep_vcf, threads = cfg.num_jobs)
+    
 
 ##################
 #
-#  QC variants
+#  QC 
 #
 #############
+
+   
+@follows(mkdir(os.path.join(cfg.runs_scratch_dir,'qc')), mkdir(os.path.join(cfg.runs_scratch_dir,'qc','read_qc')))
+@transform(link_fastqs, formatter('.+/(?P<SAMPLE_ID>[^/]+)\.fastq\.gz$'), 
+           os.path.join(cfg.runs_scratch_dir,'qc','read_qc/')+'{SAMPLE_ID[0]}_fastqc.html')
+def qc_raw_fastq(input_fastq, report):
+    """ Generate FastQC report for raw FASTQs """
+    produce_fastqc_report(input_fastq, os.path.dirname(report))
 
 
 @follows(mkdir(os.path.join(cfg.runs_scratch_dir,'qc')))

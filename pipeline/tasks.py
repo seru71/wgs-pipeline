@@ -189,6 +189,32 @@ def bgzip_and_tabix(vcf, bgzipped_vcf=None):
 # Annotation
 #
 
+
+def vep_annotate_vcf(vcf, vep_vcf, threads = 1):
+    cfg = PipelineConfig.getInstance()
+    
+    gnomad_setting = ""
+    if cfg.vep_gnomad_genomes_vcf is not None:
+        gnomad_setting = "--custom %s,gnomADg,vcf,exact,0,AF,AC,AN" % cfg.vep_gnomad_genomes_vcf
+    
+    vep_args="--offline --cache {cache} --assembly {assembly} \
+              -i {vcf} -o {vep_vcf} --vcf --no_stats --force_overwrite \
+              --everything {gnomad} --fork {threads}\
+         ".format(cache="--dir_cache %s" % cfg.vep_cache_dir if cfg.vep_cache_dir else "", \
+                  assembly = cfg.vep_genome_build, \
+                  vcf=vcf, vep_vcf=vep_vcf,
+                  gnomad = gnomad_setting,
+                  threads = threads)
+
+    run_cmd(cfg.vep, vep_args, None)
+    
+    if vep_vcf.endswith('.gz') or vep_vcf.endswith('.bgz'):
+        tmp_vcf = vep_vcf.split(".")[:-1]
+        os.rename(vep_vcf, tmp_vcf)
+        bgzip_and_tabix(tmp_vcf)
+        #os.remove(tmp_vcf)
+    
+
 def vep_annotate_bed(bed, output):
     cfg = PipelineConfig.getInstance()
     vep_args="--cache {cache} --assembly {assembly} -i {bed} -o {vep_table} \
