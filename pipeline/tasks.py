@@ -209,10 +209,10 @@ def vep_annotate_vcf(vcf, vep_vcf, threads = 1):
     run_cmd(cfg.vep, vep_args, None)
     
     if vep_vcf.endswith('.gz') or vep_vcf.endswith('.bgz'):
-        tmp_vcf = vep_vcf.split(".")[:-1]
+        tmp_vcf = ".".join(vep_vcf.split(".")[:-1])
         os.rename(vep_vcf, tmp_vcf)
         bgzip_and_tabix(tmp_vcf)
-        #os.remove(tmp_vcf)
+        os.remove(tmp_vcf)
     
 
 def vep_annotate_bed(bed, output):
