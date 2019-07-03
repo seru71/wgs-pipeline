@@ -193,6 +193,7 @@ class PipelineConfig:
         self.bedtools    = None
         self.qualimap    = None
         self.cnvnator    = None
+        self.manta       = None
         self.vep         = None
         self.vt          = None
 
@@ -327,6 +328,7 @@ class PipelineConfig:
         self.qualimap    = self._get_tool_path(config, 'qualimap')
     	self.fastqc	     = self._get_tool_path(config, 'fastqc')
         self.cnvnator    = self._get_tool_path(config, 'cnvnator')
+        self.manta       = self._get_tool_path(config, 'manta')
         self.vep         = self._get_tool_path(config, 'vep')
         self.vt          = self._get_tool_path(config, 'vt')
     

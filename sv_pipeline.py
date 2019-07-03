@@ -147,6 +147,8 @@ def join_cnvnator_annotations_and_calls(inputs, out_table):
                     print bed_records
     
 
+# LUMPY
+
 @merge(cfg.input_bams, os.path.join(cfg.runs_scratch_dir, 'multisample.sv.speedseq.vcf.gz'))
 def call_sv_speedseq(bams, vcf):
     out_prefix = vcf[:-len(".vcf.gz")]
@@ -158,6 +160,22 @@ def call_sv_speedseq(bams, vcf):
                 concordant_bams, splitters_bams, discordant_bams,
                 exclude_bed=cfg.speedseq_lumpy_exclude_bed, threads=cfg.num_jobs)
 
+
+# Manta
+@merge(cfg.input_bams, os.path.join(cfg.runs_scratch_dir, 'sv_manta', 'diploidSV.vcf.gz'))
+def call_sv_manta(bams, vcf):
+    
+    args = "--referenceFasta={ref} --runDir={rundir}\
+           ".format(ref=cfg.reference,
+                    rundir=os.path.join(cfg.runs_scratch_dir, 'sv_manta'))
+                    
+    for bam in bams:
+        args += " --bam={}".format(bam)
+                        
+    run_cmd(PipelineConfig.getInstance().manta, args)
+    run_cmd(os.path.join(cfg.runs_scratch_dir, "sv_manta", "runWorkflow.py {args}",
+                         "-m local -g 32 -j {threads} --quiet".format(threads=cfg.num_jobs)
+    
 
 
 ##################
