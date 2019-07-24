@@ -147,7 +147,33 @@ def call_svs(bams, vcf):
     
     speedseq_sv(out_prefix, cfg.reference, 
                 concordant_bams, splitters_bams, discordant_bams,
-                exclude_bed=cfg.speedseq_lumpy_exclude_bed, threads=cfg.num_jobs)
+                exclude_bed=cfg.speedseq_lumpy_exclude_bed, genotype=False, 
+                threads=cfg.num_jobs)
+
+@merge(align_reads, os.path.join(cfg.runs_scratch_dir, 'multisample.sv-smoove.genotyped.vcf.gz'))
+def call_svs_smoove(bams, vcf):
+    bams = [bam for (bam, _ , _ ) in bams]
+    
+    cmd = "docker run --rm \
+             -v {workdir}:/work \
+             -v {refdir}:/reference \
+             -v {workdir}:{workdir} \
+             -v {refdir}:{refdir} \
+             brentp/smoove smoove".format(workdir=cfg.scratch_root,
+                                    refdir=cfg.reference_root)
+                                    
+    exclude_bed = cfg.speedseq_lumpy_exclude_bed
+    args = "call --genotype -x -d --name multisample.sv \
+            --outdir {outdir} --fasta {ref} \
+            {exclude} -p {threads} \
+            {bams}".format(outdir=cfg.scratch_root,
+                           ref=cfg.reference,
+                           exclude="" if exclude_bed is None else "--exclude "+exclude_bed,
+                           threads=cfg.num_jobs,
+                           bams = ' '.join(bams))
+            
+    run_cmd(cmd+" {args}", args)
+    
 
 
 #######################
