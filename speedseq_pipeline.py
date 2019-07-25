@@ -232,7 +232,7 @@ def annotate_manta_diploidSVs(vcf, vep_vcf):
     vep_annotate_SVs(vcf, vep_vcf, threads = cfg.num_jobs)
 
 @transform(call_svs_smoove, suffix(".vcf.gz"), ".vep.vcf.gz")
-def annotate_smoove_SVs(vcf, vep_vcf):
+def annotate_smoove_svs(vcf, vep_vcf):
     vep_annotate_SVs(vcf, vep_vcf, threads = cfg.num_jobs)
 
 

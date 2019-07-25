@@ -226,7 +226,7 @@ def vep_annotate_SVs(vcf, vep_vcf, threads = 1):
     cfg = PipelineConfig.getInstance()
         
     vep_args="--offline --fork {threads} --cache {cache} --assembly {assembly} \
-              -i {vcf} -o {vep_vcf} --vcf --no_stats --force_overwrite \
+              -i {vcf} -o {vep_vcf} --format vcf --vcf --no_stats --force_overwrite \
               --per_gene --symbol --numbers --regulatory --canonical --biotype --gene_phenotype \
               ".format(cache="--dir_cache %s" % cfg.vep_cache_dir if cfg.vep_cache_dir else "", \
                   assembly = cfg.vep_genome_build, \
