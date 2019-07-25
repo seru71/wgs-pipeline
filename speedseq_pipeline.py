@@ -74,9 +74,7 @@ if __name__ == '__main__':
 
 
 from pipeline.utils import run_cmd, run_piped_command
-from pipeline.tasks import produce_fastqc_report, \
-                            speedseq_align, speedseq_var, speedseq_sv, \
-                            bgzip_and_tabix, vt_normalize, vep_annotate_vcf
+from pipeline.tasks import *
 
 from ruffus import *
 
@@ -138,7 +136,7 @@ def call_variants(bams, vcf):
     speedseq_var(out_prefix, cfg.reference, concordant_bams, 
                  cfg.speedseq_include_bed, threads=cfg.num_jobs)
 
-@merge(align_reads, os.path.join(cfg.runs_scratch_dir, 'multisample.sv.vcf.gz'))
+@merge(align_reads, os.path.join(cfg.runs_scratch_dir, 'multisample.sv.lumpy.vcf.gz'))
 def call_svs(bams, vcf):
     out_prefix = vcf[:-len(".vcf.gz")]
     concordant_bams = [bam for (bam, _ , _ ) in bams]
@@ -150,7 +148,7 @@ def call_svs(bams, vcf):
                 exclude_bed=cfg.speedseq_lumpy_exclude_bed, genotype=False, 
                 threads=cfg.num_jobs)
 
-@merge(align_reads, os.path.join(cfg.runs_scratch_dir, 'multisample.sv-smoove.genotyped.vcf.gz'))
+@merge(align_reads, os.path.join(cfg.runs_scratch_dir, 'multisample.sv.smoove.vcf.gz'))
 def call_svs_smoove(bams, vcf):
     bams = [bam for (bam, _ , _ ) in bams]
     
@@ -159,21 +157,36 @@ def call_svs_smoove(bams, vcf):
              -v {refdir}:/reference \
              -v {workdir}:{workdir} \
              -v {refdir}:{refdir} \
-             brentp/smoove smoove".format(workdir=cfg.scratch_root,
+             brentp/smoove smoove".format(workdir=cfg.runs_scratch_dir,
                                     refdir=cfg.reference_root)
                                     
     exclude_bed = cfg.speedseq_lumpy_exclude_bed
     args = "call --genotype -x -d --name multisample.sv \
             --outdir {outdir} --fasta {ref} \
             {exclude} -p {threads} \
-            {bams}".format(outdir=cfg.scratch_root,
+            {bams}".format(outdir=cfg.runs_scratch_dir,
                            ref=cfg.reference,
                            exclude="" if exclude_bed is None else "--exclude "+exclude_bed,
                            threads=cfg.num_jobs,
                            bams = ' '.join(bams))
             
     run_cmd(cmd+" {args}", args)
+
+    # rename the output, delete temp output folder
+
+@merge(align_reads, os.path.join(cfg.runs_scratch_dir, 'sv_manta', 'results', 'variants','diploidSV.vcf.gz'))
+def call_svs_manta(bams, vcf):
     
+    args = "--referenceFasta={ref} --runDir={rundir}\
+           ".format(ref=cfg.reference,
+                    rundir=os.path.join(cfg.runs_scratch_dir, 'sv_manta'))
+    bams = [bam for (bam, _ , _ ) in bams]
+    for bam in bams:
+        args += " --bam={}".format(bam)
+                        
+    run_cmd(PipelineConfig.getInstance().manta, args)
+    run_cmd(os.path.join(cfg.runs_scratch_dir, "sv_manta", "runWorkflow.py {args}"),
+                         "-m local -g 32 -j {threads} --quiet".format(threads=cfg.num_jobs))
 
 
 #######################
@@ -212,7 +225,16 @@ def filter_inner_AC(normalized_vcf, filtered_vcf):
 @transform(filter_inner_AC, suffix(".vcf.gz"), ".vep.vcf.gz")
 def annotate_filtered_vcf(vcf, vep_vcf):
     vep_annotate_vcf(vcf, vep_vcf, threads = cfg.num_jobs)
-    
+
+
+@transform(call_svs_manta, formatter(), os.path.join(cfg.runs_scratch_dir, "multisample.sv.manta.vep.vcf.gz"))
+def annotate_manta_diploidSVs(vcf, vep_vcf):
+    vep_annotate_SVs(vcf, vep_vcf, threads = cfg.num_jobs)
+
+@transform(call_svs_smoove, suffix(".vcf.gz"), ".vep.vcf.gz")
+def annotate_smoove_SVs(vcf, vep_vcf):
+    vep_annotate_SVs(vcf, vep_vcf, threads = cfg.num_jobs)
+
 
 ##################
 #

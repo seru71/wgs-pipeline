@@ -214,6 +214,33 @@ def vep_annotate_vcf(vcf, vep_vcf, threads = 1):
         bgzip_and_tabix(tmp_vcf)
         os.remove(tmp_vcf)
     
+def vep_annotate_SNVs(vcv, vep_vcf, threads = 1):
+    cfg = PipelineConfig.getInstance()
+    
+    gnomad_setting = ""
+    if cfg.vep_gnomad_genomes_vcf is not None:
+        gnomad_setting = "--custom %s,gnomADg,vcf,exact,0,AF,AC,AN" % cfg.vep_gnomad_genomes_vcf
+
+
+def vep_annotate_SVs(vcf, vep_vcf, threads = 1):
+    cfg = PipelineConfig.getInstance()
+        
+    vep_args="--offline --fork {threads} --cache {cache} --assembly {assembly} \
+              -i {vcf} -o {vep_vcf} --vcf --no_stats --force_overwrite \
+              --per_gene --symbol --numbers --regulatory --canonical --biotype --gene_phenotype \
+              ".format(cache="--dir_cache %s" % cfg.vep_cache_dir if cfg.vep_cache_dir else "", \
+                  assembly = cfg.vep_genome_build, \
+                  vcf=vcf, vep_vcf=vep_vcf,                  
+                  threads = threads)
+
+    run_cmd(cfg.vep, vep_args, None)
+    
+    if vep_vcf.endswith('.gz') or vep_vcf.endswith('.bgz'):
+        tmp_vcf = ".".join(vep_vcf.split(".")[:-1])
+        os.rename(vep_vcf, tmp_vcf)
+        bgzip_and_tabix(tmp_vcf)
+        os.remove(tmp_vcf)
+    
 
 def vep_annotate_bed(bed, output):
     cfg = PipelineConfig.getInstance()
